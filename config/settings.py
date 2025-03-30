@@ -19,3 +19,11 @@ DB_PATH = config.get('BOT', 'DB_PATH', fallback='submissions.db')
 TIMEOUT = config.getint('BOT', 'TIMEOUT', fallback=300)    # 会话超时时间（秒）
 ALLOWED_TAGS = config.getint('BOT', 'ALLOWED_TAGS', fallback=10)
 NET_TIMEOUT = 120   # 网络请求超时时间（秒）
+
+# 机器人模式: MEDIA (仅媒体), DOCUMENT (仅文档), MIXED (混合模式)
+BOT_MODE = config.get('BOT', 'BOT_MODE', fallback='MIXED')
+
+# 模式常量定义
+MODE_MEDIA = 'MEDIA'      # 仅媒体上传
+MODE_DOCUMENT = 'DOCUMENT'  # 仅文档上传
+MODE_MIXED = 'MIXED'      # 混合模式

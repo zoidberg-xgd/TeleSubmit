@@ -41,11 +41,13 @@ async def init_db():
                     user_id INTEGER PRIMARY KEY,
                     link TEXT,
                     image_id TEXT,
+                    document_id TEXT,
                     tags TEXT,
                     title TEXT,
                     note TEXT,
                     spoiler TEXT,
-                    timestamp REAL
+                    timestamp REAL,
+                    mode TEXT
                 )
             ''')
             await conn.commit()
@@ -64,6 +66,14 @@ async def init_db():
                 await c.execute("ALTER TABLE submissions ADD COLUMN spoiler TEXT")
                 await conn.commit()
                 logger.info("已添加 'spoiler' 列到 submissions 表")
+            if "document_id" not in columns:
+                await c.execute("ALTER TABLE submissions ADD COLUMN document_id TEXT")
+                await conn.commit()
+                logger.info("已添加 'document_id' 列到 submissions 表")
+            if "mode" not in columns:
+                await c.execute("ALTER TABLE submissions ADD COLUMN mode TEXT")
+                await conn.commit()
+                logger.info("已添加 'mode' 列到 submissions 表")
             logger.info("数据库初始化成功")
     except Exception as e:
         logger.error(f"数据库初始化错误: {e}")

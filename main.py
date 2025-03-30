@@ -1,5 +1,6 @@
 """
 Telegram 投稿机器人主程序
+支持媒体和文档投稿
 """
 import asyncio
 import logging
@@ -12,15 +13,14 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-from config.settings import TOKEN, TIMEOUT
+from config.settings import TOKEN, TIMEOUT, BOT_MODE, MODE_MEDIA, MODE_DOCUMENT, MODE_MIXED
 from models.state import STATE
 from database.db_manager import init_db, cleanup_old_data
 from utils.logging_config import setup_logging
-from handlers.command_handlers import start, cancel, debug, catch_all
-from handlers.error_handler import error_handler
-from handlers.conversation_handlers import (
-    handle_media, 
-    done_media, 
+from handlers.mode_selection import start, select_mode
+from handlers.document_handlers import handle_doc, done_doc, prompt_doc
+from handlers.media_handlers import handle_media, done_media, skip_media, prompt_media
+from handlers.submit_handlers import (
     handle_tag, 
     handle_link, 
     handle_title, 
@@ -28,18 +28,13 @@ from handlers.conversation_handlers import (
     handle_spoiler,
     skip_optional_link,
     skip_optional_title,
-    skip_optional_note,
-    prompt_media
+    skip_optional_note
 )
+from handlers.command_handlers import cancel, debug, catch_all
+from handlers.error_handler import error_handler
 
 # 设置日志
 logger = setup_logging()
-
-def error_callback(_, context):
-    """
-    处理作业队列中的错误
-    """
-    logger.error(f"作业队列错误: {context.error}")
 
 async def setup_application():
     """
@@ -52,29 +47,69 @@ async def setup_application():
     application = Application.builder().token(TOKEN).build()
     
     # 会话处理器
+    states = {}
+    
+    # 所有模式都需要的通用状态处理
+    states[STATE['TAG']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_tag)]
+    states[STATE['LINK']] = [
+        CommandHandler('skip_optional', skip_optional_link),
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link)
+    ]
+    states[STATE['TITLE']] = [
+        CommandHandler('skip_optional', skip_optional_title),
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_title)
+    ]
+    states[STATE['NOTE']] = [
+        CommandHandler('skip_optional', skip_optional_note),
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_note)
+    ]
+    states[STATE['SPOILER']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spoiler)]
+    
+    # 根据工作模式添加特定的状态处理
+    if BOT_MODE == MODE_MEDIA:
+        # 仅媒体模式
+        logger.info("初始化媒体模式处理器")
+        states[STATE['MEDIA']] = [
+            MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
+                        filters.Document.Category("animation") | filters.Document.AUDIO, 
+                        handle_media),
+            CommandHandler('done_media', done_media),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
+        ]
+    elif BOT_MODE == MODE_DOCUMENT:
+        # 仅文档模式
+        logger.info("初始化文档模式处理器")
+        states[STATE['DOC']] = [
+            MessageHandler(filters.Document.ALL, handle_doc),
+            CommandHandler('done_doc', done_doc),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_doc)
+        ]
+    else:
+        # 模式选择
+        logger.info("初始化混合模式处理器")
+        states[STATE['START_MODE']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, select_mode)]
+        
+        # 文档处理
+        states[STATE['DOC']] = [
+            MessageHandler(filters.Document.ALL, handle_doc),
+            CommandHandler('done_doc', done_doc),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_doc)
+        ]
+        
+        # 媒体处理
+        states[STATE['MEDIA']] = [
+            MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
+                        filters.Document.Category("animation") | filters.Document.AUDIO, 
+                        handle_media),
+            CommandHandler('done_media', done_media),
+            CommandHandler('skip_media', skip_media),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
+        ]
+    
+    # 创建会话处理器
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
-        states={
-            STATE['MEDIA']: [
-                MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO | filters.Document.ALL, handle_media),
-                CommandHandler('done', done_media),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
-            ],
-            STATE['TAG']: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_tag)],
-            STATE['LINK']: [
-                CommandHandler('skip_optional', skip_optional_link),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link)
-            ],
-            STATE['TITLE']: [
-                CommandHandler('skip_optional', skip_optional_title),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_title)
-            ],
-            STATE['NOTE']: [
-                CommandHandler('skip_optional', skip_optional_note),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_note)
-            ],
-            STATE['SPOILER']: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spoiler)],
-        },
+        states=states,
         fallbacks=[CommandHandler('cancel', cancel)],
         conversation_timeout=TIMEOUT
     )
@@ -105,7 +140,7 @@ async def main():
     # 启动机器人，停止信号时优雅退出
     await app.initialize()
     await app.start()
-    logger.info("Bot 已启动并正在运行...")
+    logger.info(f"Bot 已启动并正在运行（模式: {BOT_MODE}）...")
     
     try:
         await app.updater.start_polling()

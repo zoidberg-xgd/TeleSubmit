@@ -209,10 +209,10 @@ async def safe_send(send_func, *args, **kwargs):
                 logger.debug(f"发送超时，正在重试 ({current_attempt}/{max_retries + 1})...")
                 await asyncio.sleep(2)  # 等待2秒后重试
         except Exception as e:
-            # 其他错误直接抛出
+            # 其他错误直接记录
             last_error = str(e)
             logger.error(f"发送失败: {e}")
-            raise e
+            return None
     
     # 所有重试都失败，但我们不想中断流程，所以返回 None
     return None
