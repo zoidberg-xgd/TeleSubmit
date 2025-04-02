@@ -107,6 +107,16 @@ async def setup_application():
             CommandHandler('done_doc', done_doc),
             MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(prompt_doc))
         ]
+        
+        # 在仅文档模式下也需要添加媒体状态处理器
+        states[STATE['MEDIA']] = [
+            MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
+                        filters.Document.Category("animation") | filters.Document.AUDIO, 
+                        check_blacklist(handle_media)),
+            CommandHandler('done_media', done_media),
+            CommandHandler('skip_media', skip_media),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(prompt_media))
+        ]
     else:
         # 模式选择
         logger.info("初始化混合模式处理器")
