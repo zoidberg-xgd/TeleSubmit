@@ -17,6 +17,7 @@ from config.settings import TOKEN, TIMEOUT, BOT_MODE, MODE_MEDIA, MODE_DOCUMENT,
 from models.state import STATE
 from database.db_manager import init_db, cleanup_old_data
 from utils.logging_config import setup_logging
+from utils.blacklist import init_blacklist, blacklist_filter
 from handlers.mode_selection import start, select_mode
 from handlers.document_handlers import handle_doc, done_doc, prompt_doc
 from handlers.media_handlers import handle_media, done_media, skip_media, prompt_media
@@ -30,11 +31,30 @@ from handlers.submit_handlers import (
     skip_optional_title,
     skip_optional_note
 )
-from handlers.command_handlers import cancel, debug, catch_all
+from handlers.command_handlers import (
+    cancel, 
+    debug, 
+    catch_all,
+    blacklist_add,
+    blacklist_remove,
+    blacklist_list
+)
 from handlers.error_handler import error_handler
 
 # 设置日志
 logger = setup_logging()
+
+# 黑名单过滤函数包装器
+def check_blacklist(handler_func):
+    """黑名单过滤函数包装器"""
+    async def wrapper(update, context):
+        # 先进行黑名单检查
+        if not blacklist_filter(update):
+            # 如果在黑名单中，直接返回
+            return
+        # 不在黑名单中，调用原始处理函数
+        return await handler_func(update, context)
+    return wrapper
 
 async def setup_application():
     """
@@ -42,6 +62,9 @@ async def setup_application():
     """
     # 初始化数据库
     await init_db()
+    
+    # 初始化黑名单
+    await init_blacklist()
 
     # 创建应用
     application = Application.builder().token(TOKEN).build()
@@ -50,20 +73,20 @@ async def setup_application():
     states = {}
     
     # 所有模式都需要的通用状态处理
-    states[STATE['TAG']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_tag)]
+    states[STATE['TAG']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(handle_tag))]
     states[STATE['LINK']] = [
         CommandHandler('skip_optional', skip_optional_link),
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(handle_link))
     ]
     states[STATE['TITLE']] = [
         CommandHandler('skip_optional', skip_optional_title),
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_title)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(handle_title))
     ]
     states[STATE['NOTE']] = [
         CommandHandler('skip_optional', skip_optional_note),
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_note)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(handle_note))
     ]
-    states[STATE['SPOILER']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spoiler)]
+    states[STATE['SPOILER']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(handle_spoiler))]
     
     # 根据工作模式添加特定的状态处理
     if BOT_MODE == MODE_MEDIA:
@@ -72,38 +95,38 @@ async def setup_application():
         states[STATE['MEDIA']] = [
             MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
                         filters.Document.Category("animation") | filters.Document.AUDIO, 
-                        handle_media),
+                        check_blacklist(handle_media)),
             CommandHandler('done_media', done_media),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(prompt_media))
         ]
     elif BOT_MODE == MODE_DOCUMENT:
         # 仅文档模式
         logger.info("初始化文档模式处理器")
         states[STATE['DOC']] = [
-            MessageHandler(filters.Document.ALL, handle_doc),
+            MessageHandler(filters.Document.ALL, check_blacklist(handle_doc)),
             CommandHandler('done_doc', done_doc),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_doc)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(prompt_doc))
         ]
     else:
         # 模式选择
         logger.info("初始化混合模式处理器")
-        states[STATE['START_MODE']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, select_mode)]
+        states[STATE['START_MODE']] = [MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(select_mode))]
         
         # 文档处理
         states[STATE['DOC']] = [
-            MessageHandler(filters.Document.ALL, handle_doc),
+            MessageHandler(filters.Document.ALL, check_blacklist(handle_doc)),
             CommandHandler('done_doc', done_doc),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_doc)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(prompt_doc))
         ]
         
         # 媒体处理
         states[STATE['MEDIA']] = [
             MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
                         filters.Document.Category("animation") | filters.Document.AUDIO, 
-                        handle_media),
+                        check_blacklist(handle_media)),
             CommandHandler('done_media', done_media),
             CommandHandler('skip_media', skip_media),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, check_blacklist(prompt_media))
         ]
     
     # 创建会话处理器
@@ -117,6 +140,13 @@ async def setup_application():
     # 添加处理器
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler('debug', debug))
+    
+    # 添加黑名单管理命令
+    application.add_handler(CommandHandler('blacklist_add', blacklist_add))
+    application.add_handler(CommandHandler('blacklist_remove', blacklist_remove))
+    application.add_handler(CommandHandler('blacklist_list', blacklist_list))
+    
+    # 默认消息处理器
     application.add_handler(MessageHandler(filters.ALL, catch_all))
     application.add_error_handler(error_handler)
     

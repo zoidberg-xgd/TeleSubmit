@@ -31,52 +31,30 @@ async def get_db():
 
 async def init_db():
     """
-    初始化数据库，创建表结构
+    初始化数据库
     """
     try:
-        async with aiosqlite.connect(DB_PATH) as conn:
-            c = await conn.cursor()
-            await c.execute('''
+        async with get_db() as conn:
+            await conn.execute('''
                 CREATE TABLE IF NOT EXISTS submissions (
                     user_id INTEGER PRIMARY KEY,
-                    link TEXT,
+                    timestamp REAL,
+                    mode TEXT,
                     image_id TEXT,
                     document_id TEXT,
                     tags TEXT,
+                    link TEXT,
                     title TEXT,
                     note TEXT,
                     spoiler TEXT,
-                    timestamp REAL,
-                    mode TEXT
+                    username TEXT
                 )
             ''')
             await conn.commit()
-            # 检查并添加缺失的列
-            await c.execute("PRAGMA table_info(submissions)")
-            columns = [info[1] for info in await c.fetchall()]
-            if "title" not in columns:
-                await c.execute("ALTER TABLE submissions ADD COLUMN title TEXT")
-                await conn.commit()
-                logger.info("已添加 'title' 列到 submissions 表")
-            if "note" not in columns:
-                await c.execute("ALTER TABLE submissions ADD COLUMN note TEXT")
-                await conn.commit()
-                logger.info("已添加 'note' 列到 submissions 表")
-            if "spoiler" not in columns:
-                await c.execute("ALTER TABLE submissions ADD COLUMN spoiler TEXT")
-                await conn.commit()
-                logger.info("已添加 'spoiler' 列到 submissions 表")
-            if "document_id" not in columns:
-                await c.execute("ALTER TABLE submissions ADD COLUMN document_id TEXT")
-                await conn.commit()
-                logger.info("已添加 'document_id' 列到 submissions 表")
-            if "mode" not in columns:
-                await c.execute("ALTER TABLE submissions ADD COLUMN mode TEXT")
-                await conn.commit()
-                logger.info("已添加 'mode' 列到 submissions 表")
-            logger.info("数据库初始化成功")
+            logger.info("数据库初始化完成")
     except Exception as e:
-        logger.error(f"数据库初始化错误: {e}")
+        logger.error(f"初始化数据库时出错: {e}")
+        raise
 
 async def cleanup_old_data():
     """

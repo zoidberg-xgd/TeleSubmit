@@ -9,6 +9,7 @@ from telegram.ext import ConversationHandler, CallbackContext
 from config.settings import BOT_MODE, MODE_MEDIA, MODE_DOCUMENT, MODE_MIXED
 from models.state import STATE
 from database.db_manager import get_db, cleanup_old_data
+from utils.blacklist import is_blacklisted
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,16 @@ async def start(update: Update, context: CallbackContext) -> int:
     await cleanup_old_data()
     user_id = update.effective_user.id
     
+    # 获取用户名信息
+    user = update.effective_user
+    username = user.username or f"user{user.id}"
+    
+    # 检查用户是否在黑名单中
+    if is_blacklisted(user_id):
+        logger.warning(f"黑名单用户尝试使用机器人，user_id: {user_id}")
+        await update.message.reply_text("⚠️ 您已被列入黑名单，无法使用投稿功能。如有疑问，请联系管理员。")
+        return ConversationHandler.END
+    
     try:
         async with get_db() as conn:
             c = await conn.cursor()
@@ -37,8 +48,8 @@ async def start(update: Update, context: CallbackContext) -> int:
             if BOT_MODE == MODE_MEDIA:
                 mode = "media"
                 logger.info(f"使用媒体模式，user_id: {user_id}")
-                await c.execute("INSERT INTO submissions (user_id, timestamp, mode, image_id, document_id) VALUES (?, ?, ?, ?, ?)",
-                          (user_id, datetime.now().timestamp(), mode, "[]", "[]"))
+                await c.execute("INSERT INTO submissions (user_id, timestamp, mode, image_id, document_id, username) VALUES (?, ?, ?, ?, ?, ?)",
+                          (user_id, datetime.now().timestamp(), mode, "[]", "[]", username))
                 await conn.commit()
                 await show_media_welcome(update)
                 return STATE['MEDIA']
@@ -46,8 +57,8 @@ async def start(update: Update, context: CallbackContext) -> int:
             elif BOT_MODE == MODE_DOCUMENT:
                 mode = "document"
                 logger.info(f"使用文档模式，user_id: {user_id}")
-                await c.execute("INSERT INTO submissions (user_id, timestamp, mode, image_id, document_id) VALUES (?, ?, ?, ?, ?)",
-                          (user_id, datetime.now().timestamp(), mode, "[]", "[]"))
+                await c.execute("INSERT INTO submissions (user_id, timestamp, mode, image_id, document_id, username) VALUES (?, ?, ?, ?, ?, ?)",
+                          (user_id, datetime.now().timestamp(), mode, "[]", "[]", username))
                 await conn.commit()
                 await show_document_welcome(update)
                 return STATE['DOC']
@@ -55,8 +66,8 @@ async def start(update: Update, context: CallbackContext) -> int:
             else:  # 混合模式
                 # 先创建数据库记录
                 logger.info(f"使用混合模式，user_id: {user_id}")
-                await c.execute("INSERT INTO submissions (user_id, timestamp, mode, image_id, document_id) VALUES (?, ?, ?, ?, ?)",
-                          (user_id, datetime.now().timestamp(), "mixed", "[]", "[]"))
+                await c.execute("INSERT INTO submissions (user_id, timestamp, mode, image_id, document_id, username) VALUES (?, ?, ?, ?, ?, ?)",
+                          (user_id, datetime.now().timestamp(), "mixed", "[]", "[]", username))
                 await conn.commit()
                 
                 # 显示模式选择键盘

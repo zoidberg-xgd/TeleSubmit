@@ -23,6 +23,11 @@
 
 - **用户友好**: 逐步引导式提交流程
 
+- **所有者与黑名单**:
+  - 设置机器人所有者，专享管理权限
+  - 黑名单功能，禁止特定用户使用机器人
+  - 投稿人信息显示，方便追踪内容来源
+
 ## 项目结构
 
 ```
@@ -44,6 +49,7 @@ telegram_submission_bot/
 │   └── error_handler.py
 ├── utils/                    # 工具函数
 │   ├── __init__.py
+│   ├── blacklist.py         # 黑名单管理
 │   ├── logging_config.py
 │   └── helper_functions.py
 ├── models/                   # 数据模型
@@ -68,7 +74,7 @@ telegram_submission_bot/
    ```
 
 3. 配置机器人：
-   编辑 `config.ini` 文件，添加您的 Telegram 机器人令牌和频道 ID：
+   编辑 `config.ini` 文件，添加您的 Telegram 机器人令牌、频道 ID 和所有者 ID：
    ```ini
    [BOT]
    TOKEN = your_bot_token_here
@@ -76,7 +82,12 @@ telegram_submission_bot/
    DB_PATH = submissions.db
    TIMEOUT = 300
    ALLOWED_TAGS = 30
-   BOT_MODE = MIXED  # 选项: MEDIA, DOCUMENT, MIXED
+   # 选项: MEDIA, DOCUMENT, MIXED
+   BOT_MODE = MIXED
+   # 设置机器人所有者的Telegram数字用户ID（必须是数字ID，不能是用户名）
+   OWNER_ID = 123456789
+   # 是否在投稿内容尾部显示投稿人信息（True/False）
+   SHOW_SUBMITTER = True
    ```
 
 ## 使用方法
@@ -100,6 +111,7 @@ telegram_submission_bot/
 
 ## 命令
 
+### 普通用户命令
 - `/start` - 开始新的提交
 - `/done_doc` - 完成文档上传
 - `/done_media` - 完成媒体上传
@@ -107,6 +119,26 @@ telegram_submission_bot/
 - `/skip_optional` - 跳过所有剩余的可选字段
 - `/cancel` - 取消当前提交
 - `/debug` - 调试命令（用于开发）
+
+### 管理员命令（仅所有者可用）
+- `/blacklist_add <用户ID> [原因]` - 将用户添加到黑名单
+- `/blacklist_remove <用户ID>` - 从黑名单中移除用户
+- `/blacklist_list` - 显示当前黑名单列表
+
+## 黑名单功能
+
+1. **获取用户ID**：
+   - 通过投稿内容尾部的"投稿人"链接查看用户资料
+   - 使用 [@userinfobot](https://t.me/userinfobot) 或 [@RawDataBot](https://t.me/RawDataBot) 获取用户的数字ID
+
+2. **管理黑名单**：
+   - 将用户添加到黑名单：`/blacklist_add 123456789 违规内容`
+   - 从黑名单中移除用户：`/blacklist_remove 123456789`
+   - 查看当前黑名单列表：`/blacklist_list`
+
+3. **配置选项**：
+   - 在 `config.ini` 中设置 `SHOW_SUBMITTER = True` 可在投稿尾部显示投稿人信息
+   - 设置 `SHOW_SUBMITTER = False` 可隐藏投稿人信息
 
 ## 要求
 

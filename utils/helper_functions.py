@@ -10,7 +10,7 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ConversationHandler, CallbackContext
 
-from config.settings import ALLOWED_TAGS, NET_TIMEOUT
+from config.settings import ALLOWED_TAGS, NET_TIMEOUT, SHOW_SUBMITTER
 from database.db_manager import get_db
 
 logger = logging.getLogger(__name__)
@@ -86,37 +86,78 @@ def build_caption(data) -> str:
     
     def get_spoiler_part(spoiler: str) -> str:
         return "⚠️点击查看⚠️" if spoiler.lower() == "true" else ""
+    
+    def get_submitter_part(user_id: int) -> str:
+        if not SHOW_SUBMITTER:
+            return ""
+        
+        # 获取保存的用户名，如果存在的话
+        # sqlite3.Row对象不支持get()方法，使用try-except处理
+        try:
+            username = data["username"] if "username" in data else f"user{user_id}"
+        except (KeyError, TypeError):
+            username = f"user{user_id}"
+        
+        # 构建用户链接，可以通过点击访问用户资料
+        return f"\n\n投稿人：<a href=\"tg://user?id={user_id}\">@{username}</a>"
 
     # 收集各部分，只有内容不为空时才添加，避免产生多余的换行
     parts = []
-    link = get_link_part(data["link"])
-    if link:
-        parts.append(link)
-    title = get_title_part(data["title"])
-    if title:
-        parts.append(title)
-    note = get_note_part(data["note"])
-    if note:
-        parts.append(note)
-    tags = get_tags_part(data["tags"])
-    if tags:
-        parts.append(tags)
+    
+    # 安全获取属性，防止访问不存在的键
+    try:
+        link = get_link_part(data["link"] if data["link"] else "")
+        if link:
+            parts.append(link)
+    except (KeyError, TypeError):
+        pass
+
+    try:
+        title = get_title_part(data["title"] if data["title"] else "")
+        if title:
+            parts.append(title)
+    except (KeyError, TypeError):
+        pass
+
+    try:
+        note = get_note_part(data["note"] if data["note"] else "")
+        if note:
+            parts.append(note)
+    except (KeyError, TypeError):
+        pass
+
+    try:
+        tags = get_tags_part(data["tags"] if data["tags"] else "")
+        if tags:
+            parts.append(tags)
+    except (KeyError, TypeError):
+        pass
     
     # 将各部分按换行符连接，避免空值带来多余换行
     caption_body = "\n".join(parts)
-    spoiler = get_spoiler_part(data["spoiler"])
+    
+    try:
+        spoiler = get_spoiler_part(data["spoiler"] if data["spoiler"] else "false")
+    except (KeyError, TypeError):
+        spoiler = ""
+    
+    # 添加投稿人信息（如果启用）
+    try:
+        submitter = get_submitter_part(data["user_id"])
+    except (KeyError, TypeError):
+        submitter = ""
     
     # 如果存在正文内容且有剧透提示，则剧透提示单独占一行
     if caption_body:
-        full_caption = f"{spoiler}\n{caption_body}" if spoiler else caption_body
+        full_caption = f"{spoiler}\n{caption_body}{submitter}" if spoiler else f"{caption_body}{submitter}"
     else:
-        full_caption = spoiler
+        full_caption = f"{spoiler}{submitter}" if submitter else spoiler
 
     # 如果整体长度在允许范围内，则直接返回
     if len(full_caption) <= MAX_CAPTION_LENGTH:
         return full_caption
 
-    # 超长情况：尝试截断 note 部分（其他部分保持不变）
+    # 超长情况：保留投稿人信息，尝试截断 note 部分（其他部分保持不变）
     fixed_parts = []
     if link:
         fixed_parts.append(link)
@@ -126,12 +167,17 @@ def build_caption(data) -> str:
         fixed_parts.append(tags)
     fixed_text = "\n".join(fixed_parts)
     
-    # 预留剧透提示和固定部分所占长度以及连接换行符
+    # 预留剧透提示、投稿人信息和固定部分所占长度以及连接换行符
     prefix = f"{spoiler}\n" if spoiler and fixed_text else spoiler
-    # 如果 note 存在，则需要额外一个换行符连接
+    # 计算可用长度（要为投稿人信息预留空间）
     connector = "\n" if fixed_text and note else ""
-    available_length = MAX_CAPTION_LENGTH - len(prefix) - len(fixed_text) - len(connector)
-    truncated_note = (data["note"][:available_length] + "...") if (available_length > 0 and data["note"]) else ""
+    available_length = MAX_CAPTION_LENGTH - len(prefix) - len(fixed_text) - len(connector) - len(submitter)
+    
+    try:
+        truncated_note = (data["note"][:available_length] + "...") if (available_length > 0 and data["note"]) else ""
+    except (KeyError, TypeError):
+        truncated_note = ""
+        
     truncated_note_part = get_note_part(truncated_note)
     
     # 重新组装各部分
@@ -145,7 +191,7 @@ def build_caption(data) -> str:
     if tags:
         parts.append(tags)
     caption_body = "\n".join(parts)
-    full_caption = f"{spoiler}\n{caption_body}" if spoiler and caption_body else spoiler or caption_body
+    full_caption = f"{spoiler}\n{caption_body}{submitter}" if spoiler and caption_body else f"{spoiler or caption_body}{submitter}"
 
     return full_caption[:MAX_CAPTION_LENGTH]
 
