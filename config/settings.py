@@ -21,6 +21,7 @@ ALLOWED_TAGS = config.getint('BOT', 'ALLOWED_TAGS', fallback=10)
 NET_TIMEOUT = 120   # 网络请求超时时间（秒）
 OWNER_ID = config.get('BOT', 'OWNER_ID', fallback=None)  # 机器人所有者ID
 SHOW_SUBMITTER = config.getboolean('BOT', 'SHOW_SUBMITTER', fallback=True)  # 是否显示投稿人信息
+NOTIFY_OWNER = config.getboolean('BOT', 'NOTIFY_OWNER', fallback=True)  # 是否向所有者发送投稿通知
 
 # 机器人模式: MEDIA (仅媒体), DOCUMENT (仅文档), MIXED (混合模式)
 BOT_MODE = config.get('BOT', 'BOT_MODE', fallback='MIXED')

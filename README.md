@@ -88,6 +88,8 @@ telegram_submission_bot/
    OWNER_ID = 123456789
    # 是否在投稿内容尾部显示投稿人信息（True/False）
    SHOW_SUBMITTER = True
+   # 是否向所有者发送投稿通知（True/False）
+   NOTIFY_OWNER = True
    ```
 
 ## 使用方法
@@ -130,6 +132,7 @@ telegram_submission_bot/
 1. **获取用户ID**：
    - 通过投稿内容尾部的"投稿人"链接查看用户资料
    - 使用 [@userinfobot](https://t.me/userinfobot) 或 [@RawDataBot](https://t.me/RawDataBot) 获取用户的数字ID
+   - 接收机器人发送的投稿通知（当NOTIFY_OWNER=True时）
 
 2. **管理黑名单**：
    - 将用户添加到黑名单：`/blacklist_add 123456789 违规内容`
@@ -139,6 +142,8 @@ telegram_submission_bot/
 3. **配置选项**：
    - 在 `config.ini` 中设置 `SHOW_SUBMITTER = True` 可在投稿尾部显示投稿人信息
    - 设置 `SHOW_SUBMITTER = False` 可隐藏投稿人信息
+   - 设置 `NOTIFY_OWNER = True` 可在有新投稿时向所有者发送通知，包含投稿人信息和投稿链接
+   - 通知消息包含用户ID、用户名和投稿链接，以及快速封禁命令
 
 ## 要求
 

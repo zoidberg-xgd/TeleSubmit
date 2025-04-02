@@ -14,7 +14,7 @@ from telegram import (
 )
 from telegram.ext import ConversationHandler, CallbackContext
 
-from config.settings import CHANNEL_ID, NET_TIMEOUT
+from config.settings import CHANNEL_ID, NET_TIMEOUT, OWNER_ID, NOTIFY_OWNER
 from database.db_manager import get_db, cleanup_old_data
 from utils.helper_functions import build_caption, safe_send
 
@@ -108,6 +108,39 @@ async def publish_submission(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text(
             f"🎉 投稿已成功发布到频道！\n点击以下链接查看投稿：\n{submission_link}"
         )
+        
+        # 向所有者发送投稿通知
+        if NOTIFY_OWNER and OWNER_ID:
+            # 获取用户名信息
+            username = None
+            try:
+                username = data["username"] if "username" in data else f"user{user_id}"
+            except (KeyError, TypeError):
+                username = f"user{user_id}"
+                
+            # 获取用户名信息，优先使用真实用户名
+            user = update.effective_user
+            real_username = user.username or username
+            
+            # 构建通知消息
+            owner_notification = (
+                f"📨 新投稿通知\n\n"
+                f"👤 投稿人ID: `{user_id}`\n"
+                f"📛 用户名: {('@' + real_username) if user.username else real_username}\n"
+                f"🔗 投稿链接: {submission_link}\n\n"
+                f"要封禁此用户，请发送:\n"
+                f"`/blacklist_add {user_id} 违规内容`"
+            )
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=OWNER_ID,
+                    text=owner_notification,
+                    parse_mode="Markdown"
+                )
+                logger.info(f"已向所有者 {OWNER_ID} 发送投稿通知，投稿人: {user_id}")
+            except Exception as e:
+                logger.error(f"向所有者发送通知失败: {e}")
         
     except Exception as e:
         logger.error(f"发布投稿失败: {e}")
