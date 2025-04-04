@@ -74,7 +74,10 @@ async def start(update: Update, context: CallbackContext) -> int:
                 keyboard = [['📷 媒体投稿', '📄 文档投稿']]
                 markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
                 await update.message.reply_text(
-                    "📮 欢迎使用投稿机器人！请选择投稿类型：",
+                    "📮 欢迎使用投稿机器人！请选择投稿类型：\n\n"
+                    "- 📷 媒体投稿：用于提交图片、视频、GIF等媒体文件\n"
+                    "- 📄 文档投稿：用于提交PDF、DOC等文档文件\n\n"
+                    "⏱️ 操作超时提醒：如果5分钟内没有操作，会话将自动结束，需要重新发送 /start。",
                     reply_markup=markup
                 )
                 return STATE['START_MODE']
@@ -157,6 +160,8 @@ async def show_media_welcome(update):
         "   - 如不需要简介，请回复 \"无\" 或发送 /skip_optional 跳过后面的所有可选项。\n\n"
         "6️⃣ 是否将所有媒体设为剧透（点击查看）？\n"
         "   - 请回复 \"否\" 或 \"是\"。\n\n"
+        "⏱️ 操作超时提醒：\n"
+        "   - 如果5分钟内没有操作，会话将自动结束，需要重新发送 /start。\n\n"
         "随时发送 /cancel 取消投稿。"
     )
 
@@ -185,5 +190,7 @@ async def show_document_welcome(update):
         "   - 如不需要简介，请回复 \"无\" 或发送 /skip_optional 跳过后面的所有可选项。\n\n"
         "7️⃣ 是否将内容设为剧透（点击查看）？\n"
         "   - 请回复 \"否\" 或 \"是\"。\n\n"
+        "⏱️ 操作超时提醒：\n"
+        "   - 如果5分钟内没有操作，会话将自动结束，需要重新发送 /start。\n\n"
         "随时发送 /cancel 取消投稿。"
     )

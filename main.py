@@ -11,11 +11,13 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ConversationHandler,
+    CallbackContext,
+    Update,
 )
 
 from config.settings import TOKEN, TIMEOUT, BOT_MODE, MODE_MEDIA, MODE_DOCUMENT, MODE_MIXED
 from models.state import STATE
-from database.db_manager import init_db, cleanup_old_data
+from database.db_manager import init_db, cleanup_old_data, get_db
 from utils.logging_config import setup_logging
 from utils.blacklist import init_blacklist, blacklist_filter
 from handlers.mode_selection import start, select_mode
@@ -43,6 +45,36 @@ from handlers.error_handler import error_handler
 
 # 设置日志
 logger = setup_logging()
+
+# 会话超时回调函数
+async def conversation_timeout(update: Update, context: CallbackContext) -> int:
+    """
+    会话超时处理函数
+    
+    Args:
+        update: 最后一个更新对象
+        context: 回调上下文
+        
+    Returns:
+        int: 会话结束状态
+    """
+    if update and update.effective_user:
+        user_id = update.effective_user.id
+        logger.info(f"用户 {user_id} 的会话已超时")
+        try:
+            # 清理用户数据
+            async with get_db() as conn:
+                c = await conn.cursor()
+                await c.execute("DELETE FROM submissions WHERE user_id=?", (user_id,))
+        except Exception as e:
+            logger.error(f"清理超时用户数据时出错: {e}")
+            
+        try:
+            await update.message.reply_text("⏱️ 会话已超时，请重新发送 /start 开始投稿")
+        except Exception as e:
+            logger.error(f"向用户发送超时通知时出错: {e}")
+    
+    return ConversationHandler.END
 
 # 黑名单过滤函数包装器
 def check_blacklist(handler_func):
@@ -144,7 +176,11 @@ async def setup_application():
         entry_points=[CommandHandler('start', start)],
         states=states,
         fallbacks=[CommandHandler('cancel', cancel)],
-        conversation_timeout=TIMEOUT
+        conversation_timeout=TIMEOUT,
+        name="main_conversation",
+        persistent=False,
+        # 添加超时回调
+        timeout_handler=conversation_timeout
     )
     
     # 添加处理器
