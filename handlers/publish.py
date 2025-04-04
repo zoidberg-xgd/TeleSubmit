@@ -133,12 +133,16 @@ async def publish_submission(update: Update, context: CallbackContext) -> int:
             )
             
             try:
+                # 确保OWNER_ID被转换为整数
+                owner_id_int = int(OWNER_ID)
                 await context.bot.send_message(
-                    chat_id=OWNER_ID,
+                    chat_id=owner_id_int,
                     text=owner_notification,
                     parse_mode="Markdown"
                 )
                 logger.info(f"已向所有者 {OWNER_ID} 发送投稿通知，投稿人: {user_id}")
+            except ValueError as e:
+                logger.error(f"OWNER_ID格式不正确，无法转换为整数: {e}")
             except Exception as e:
                 logger.error(f"向所有者发送通知失败: {e}")
         
