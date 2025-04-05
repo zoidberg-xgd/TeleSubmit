@@ -22,7 +22,7 @@ handle_text = debug  # 临时替代
 collect_extra = lambda update, context: None
 
 # 媒体处理函数
-from handlers.media_handlers import handle_media, done_media, prompt_media, skip_media
+from handlers.media_handlers import handle_media, done_media, prompt_media, skip_media, switch_to_doc_mode
 
 # 文档处理函数
 from handlers.document_handlers import handle_doc, done_doc, prompt_doc

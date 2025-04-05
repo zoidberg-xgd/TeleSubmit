@@ -45,7 +45,7 @@ from utils.helper_functions import CONFIG
 from handlers import (
     start, help_command, cancel, settings, settings_callback,
     handle_text, collect_extra, handle_image, done_image,
-    handle_document, done_document
+    handle_document, done_document, switch_to_doc_mode
 )
 
 # 黑名单管理
@@ -242,8 +242,8 @@ def setup_application(application):
         application.add_handler(CommandHandler('blacklist_add', blacklist_add), group=-998)
         application.add_handler(CommandHandler('blacklist_remove', blacklist_remove), group=-998)
         application.add_handler(CommandHandler('blacklist_list', blacklist_list), group=-998)
-        application.add_handler(CommandHandler('start', start), group=-998)  # start命令也设为高优先级
-        application.add_handler(CommandHandler('cancel', cancel), group=-998)  # cancel命令设为高优先级
+        # 不再注册高优先级的cancel命令，只在ConversationHandler的fallbacks中注册
+        # application.add_handler(CommandHandler('cancel', cancel), group=-998)  # 注释掉这行
         logger.info("高优先级命令处理器注册完成")
     except Exception as e:
         logger.error(f"注册高优先级命令处理器失败: {e}", exc_info=True)
@@ -263,22 +263,32 @@ def setup_application(application):
         # 添加会话处理器
         logger.info("注册会话处理器...")
         conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("submit", start)],  # start命令已在高优先级注册
+            entry_points=[
+                CommandHandler("submit", start),
+                CommandHandler("start", start)  # 确保/start也是入口点
+            ],
             states={
                 # 模式选择状态
-                STATE.get('START_MODE', 0): [MessageHandler(filters.TEXT & ~filters.COMMAND, select_mode)],
+                STATE.get('START_MODE', 0): [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, select_mode)
+                ],
                 
-                # 文档和媒体处理状态
+                # 文档和媒体处理状态 - 优先处理skip_media命令
                 STATE.get('MEDIA', 2): [
+                    CommandHandler('done_media', done_media),
+                    CommandHandler('skip_media', skip_media),
                     MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
                                  filters.Document.Category("animation") | filters.Document.AUDIO, 
                                  handle_media),
-                    CommandHandler('done_media', done_media),
+                    # 在媒体状态下也检查文档类型
+                    MessageHandler(filters.Document.ALL, handle_media),
+                    # 添加媒体模式切换回调
+                    CallbackQueryHandler(switch_to_doc_mode, pattern="^switch_to_doc$"),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
                 ],
                 STATE.get('DOC', 1): [
-                    MessageHandler(filters.Document.ALL, handle_doc),
                     CommandHandler('done_doc', done_doc),
+                    MessageHandler(filters.Document.ALL, handle_doc),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_doc)
                 ],
                 

@@ -29,7 +29,14 @@ async def handle_doc(update: Update, context: CallbackContext) -> int:
     user_id = update.effective_user.id
     
     if not update.message.document:
-        await update.message.reply_text("⚠️ 请发送文档文件")
+        logger.warning(f"收到非文档消息，但被路由到文档处理，user_id: {user_id}")
+        await update.message.reply_text(
+            "⚠️ 请发送文档文件\n\n"
+            "📎 请以文件附件形式发送：\n"
+            "• 点击聊天输入框旁的📎图标\n"
+            "• 选择文件或文档\n"
+            "• 支持ZIP、RAR等压缩包以及PDF、DOC等各种文档格式"
+        )
         return STATE['DOC']
     
     doc = update.message.document
@@ -108,7 +115,13 @@ async def done_doc(update: Update, context: CallbackContext) -> int:
             
             # 文档必选 - 检查至少有一个文档
             if not doc_list:
-                await update.message.reply_text("⚠️ 请至少发送一个文档文件")
+                await update.message.reply_text(
+                    "⚠️ 请至少发送一个文档文件\n\n"
+                    "📎 请以文件附件形式发送：\n"
+                    "• 点击聊天输入框旁的📎图标\n"
+                    "• 选择文件或文档\n"
+                    "• 支持ZIP、RAR等压缩包以及PDF、DOC等各种文档格式"
+                )
                 return STATE['DOC']
                 
             # 判断模式，决定下一步流程
@@ -117,8 +130,13 @@ async def done_doc(update: Update, context: CallbackContext) -> int:
             
             # 不论什么模式，完成文档上传后都进入媒体上传阶段
             await update.message.reply_text(
-                "✅ 文档接收完成。\n现在请发送媒体文件（可选）：\n"
-                "支持图片、视频、GIF、音频等，最多上传10个文件。\n"
+                "✅ 文档接收完成。\n现在请发送媒体文件（可选）：\n\n"
+                "📱 支持的媒体格式：\n"
+                "• 图片：直接从相册选择发送\n"
+                "• 视频：直接发送视频（非文件形式）\n"
+                "• GIF：直接发送GIF动图\n"
+                "• 音频：直接发送语音或音频\n\n"
+                "最多上传10个文件。\n"
                 "发送完毕后，请发送 /done_media，或发送 /skip_media 跳过媒体上传步骤。"
             )
             return STATE['MEDIA']
@@ -138,5 +156,11 @@ async def prompt_doc(update: Update, context: CallbackContext) -> int:
     Returns:
         int: 当前会话状态
     """
-    await update.message.reply_text("请发送文档文件，或发送 /done_doc 完成上传")
+    await update.message.reply_text(
+        "请发送文档文件，或发送 /done_doc 完成上传\n\n"
+        "📎 请以文件附件形式发送：\n"
+        "• 点击聊天输入框旁的📎图标\n"
+        "• 选择文件或文档\n"
+        "• 支持ZIP、RAR等压缩包以及PDF、DOC等各种文档格式"
+    )
     return STATE['DOC']
