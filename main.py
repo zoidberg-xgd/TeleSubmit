@@ -5,6 +5,8 @@ Telegram 投稿机器人主程序
 import asyncio
 import logging
 import platform
+from datetime import datetime
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -12,9 +14,7 @@ from telegram.ext import (
     filters,
     ConversationHandler,
     CallbackContext,
-    Update,
 )
-from datetime import datetime
 
 from config.settings import TOKEN, TIMEOUT, BOT_MODE, MODE_MEDIA, MODE_DOCUMENT, MODE_MIXED
 from models.state import STATE
