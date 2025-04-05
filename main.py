@@ -14,11 +14,12 @@ from telegram.ext import (
     CallbackContext,
     Update,
 )
+from datetime import datetime
 
 from config.settings import TOKEN, TIMEOUT, BOT_MODE, MODE_MEDIA, MODE_DOCUMENT, MODE_MIXED
 from models.state import STATE
 from database.db_manager import init_db, cleanup_old_data, get_db
-from utils.logging_config import setup_logging
+from utils.logging_config import setup_logging, cleanup_old_logs
 from utils.blacklist import init_blacklist, blacklist_filter
 from handlers.mode_selection import start, select_mode
 from handlers.document_handlers import handle_doc, done_doc, prompt_doc
@@ -203,6 +204,15 @@ async def setup_application():
         interval=300, 
         first=10
     )
+    
+    # 添加周期性清理日志任务
+    def clean_logs_job(context):
+        """定期清理日志文件"""
+        logger.info("执行定期日志清理任务")
+        cleanup_old_logs("logs")
+        
+    # 每天凌晨3点执行一次日志清理
+    job_queue.run_daily(clean_logs_job, time=datetime.time(hour=3, minute=0))
     
     return application
 

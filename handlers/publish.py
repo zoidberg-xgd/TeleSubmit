@@ -111,6 +111,9 @@ async def publish_submission(update: Update, context: CallbackContext) -> int:
         
         # 向所有者发送投稿通知
         if NOTIFY_OWNER and OWNER_ID:
+            # 记录详细的调试信息
+            logger.info(f"准备发送通知: NOTIFY_OWNER={NOTIFY_OWNER}, OWNER_ID={OWNER_ID}, 类型={type(OWNER_ID)}")
+            
             # 获取用户名信息
             username = None
             try:
@@ -134,17 +137,71 @@ async def publish_submission(update: Update, context: CallbackContext) -> int:
             
             try:
                 # 确保OWNER_ID被转换为整数
+                logger.info(f"尝试将OWNER_ID转换为整数: {OWNER_ID}")
                 owner_id_int = int(OWNER_ID)
-                await context.bot.send_message(
-                    chat_id=owner_id_int,
-                    text=owner_notification,
-                    parse_mode="Markdown"
-                )
-                logger.info(f"已向所有者 {OWNER_ID} 发送投稿通知，投稿人: {user_id}")
+                logger.info(f"转换成功，准备发送通知到: {owner_id_int}")
+                
+                # 记录通知消息内容（敏感信息脱敏）
+                logger.info(f"通知消息长度: {len(owner_notification)}, 格式: Markdown")
+                
+                # 尝试发送消息
+                try:
+                    await context.bot.send_message(
+                        chat_id=owner_id_int,
+                        text=owner_notification,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"通知发送成功！已向所有者 {OWNER_ID} 发送投稿通知，投稿人: {user_id}")
+                except Exception as e:
+                    logger.error(f"向所有者发送通知失败: 错误类型: {type(e)}, 详细信息: {str(e)}")
+                    logger.error("异常追踪: ", exc_info=True)
+                    
+                    # 检查是否是Markdown解析错误
+                    if "can't parse entities" in str(e).lower() or "entity" in str(e).lower():
+                        logger.info("可能是Markdown解析错误，尝试不使用格式发送...")
+                        try:
+                            await context.bot.send_message(
+                                chat_id=owner_id_int,
+                                text=owner_notification,
+                                parse_mode=None  # 不使用任何格式
+                            )
+                            logger.info("不使用格式的通知发送成功！")
+                        except Exception as e2:
+                            logger.error(f"不使用格式的通知也发送失败: {e2}")
+                            # 继续尝试简化消息
+                            raise
+                    
+                    # 尝试发送简化消息
+                    logger.info("尝试发送简化消息...")
+                    try:
+                        owner_simple_notification = f"新投稿通知 - 投稿人: {real_username} (ID: {user_id})"
+                        await context.bot.send_message(
+                            chat_id=owner_id_int,
+                            text=owner_simple_notification
+                        )
+                        logger.info("简化消息发送成功")
+                    except Exception as e2:
+                        logger.error(f"简化消息也发送失败: {e2}")
+                        
+                        # 最后一次尝试 - 直接向用户发送失败通知
+                        try:
+                            owner_error_notification = f"⚠️ 通知系统错误：无法向所有者 {OWNER_ID} 发送通知。请联系开发者。"
+                            await update.message.reply_text(owner_error_notification)
+                            logger.info("已向用户发送通知失败的消息")
+                        except Exception as e3:
+                            logger.error(f"向用户发送通知失败消息也失败: {e3}")
             except ValueError as e:
-                logger.error(f"OWNER_ID格式不正确，无法转换为整数: {e}")
+                logger.error(f"OWNER_ID格式不正确，无法转换为整数: {OWNER_ID}, 错误: {e}")
+                await update.message.reply_text(f"⚠️ 配置错误：OWNER_ID格式不正确。请联系开发者修复配置。")
             except Exception as e:
-                logger.error(f"向所有者发送通知失败: {e}")
+                logger.error(f"处理通知过程中发生其他错误: 错误类型: {type(e)}, 详细信息: {str(e)}")
+                logger.error("异常追踪: ", exc_info=True)
+                try:
+                    await update.message.reply_text("⚠️ 通知系统错误，请联系开发者。")
+                except:
+                    pass
+        else:
+            logger.info(f"不发送通知: NOTIFY_OWNER={NOTIFY_OWNER}, OWNER_ID={OWNER_ID}")
         
     except Exception as e:
         logger.error(f"发布投稿失败: {e}")
