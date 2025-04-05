@@ -143,4 +143,28 @@ def is_owner(user_id: int) -> bool:
     """
     if not OWNER_ID:
         return False
-    return str(user_id) == OWNER_ID 
+    return str(user_id) == OWNER_ID
+
+async def manage_blacklist(update, context):
+    """
+    黑名单管理命令处理
+    
+    Args:
+        update: Telegram 更新对象
+        context: 回调上下文
+    """
+    user_id = update.effective_user.id
+    
+    # 检查是否为所有者
+    if not is_owner(user_id):
+        logger.warning(f"非所有者用户 {user_id} 尝试使用黑名单管理命令")
+        await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
+        return
+    
+    # 显示帮助信息
+    await update.message.reply_text(
+        "📋 黑名单管理命令：\n\n"
+        "/blacklist_add <user_id> [原因] - 将用户添加到黑名单\n"
+        "/blacklist_remove <user_id> - 将用户从黑名单中移除\n"
+        "/blacklist_list - 列出所有黑名单用户"
+    ) 

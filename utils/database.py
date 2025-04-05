@@ -237,24 +237,26 @@ def remove_from_blacklist(user_id):
             if 'conn' in locals():
                 conn.close()
 
-@retry_on_db_error()
-def is_blacklisted(user_id):
-    """检查用户是否在黑名单中"""
-    with db_lock:
-        try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT 1 FROM blacklist WHERE user_id = ?", (user_id,))
-            result = cursor.fetchone()
-            
-            return result is not None
-        except sqlite3.Error as e:
-            logger.error(f"检查用户黑名单状态失败 (用户ID: {user_id}): {e}")
-            raise
-        finally:
-            if 'conn' in locals():
-                conn.close()
+def is_blacklisted(user_id: int) -> bool:
+    """
+    检查用户是否在黑名单中（代理函数，实际调用utils.blacklist模块）
+    
+    Args:
+        user_id: 要检查的用户ID
+        
+    Returns:
+        bool: 用户是否在黑名单中
+    """
+    try:
+        # 引入黑名单模块
+        from utils.blacklist import is_blacklisted as bl_check
+        return bl_check(user_id)
+    except ImportError:
+        logger.error("无法导入黑名单模块，默认返回用户不在黑名单")
+        return False
+    except Exception as e:
+        logger.error(f"检查黑名单状态时出错: {str(e)}")
+        return False
 
 @retry_on_db_error()
 def get_blacklist():
