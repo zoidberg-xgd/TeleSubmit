@@ -144,62 +144,63 @@ async def publish_submission(update: Update, context: CallbackContext) -> int:
                 # 记录通知消息内容（敏感信息脱敏）
                 logger.info(f"通知消息长度: {len(owner_notification)}, 格式: Markdown")
                 
-                # 尝试发送消息
+                # 先尝试验证与所有者的通信状态
                 try:
-                    await context.bot.send_message(
-                        chat_id=owner_id_int,
-                        text=owner_notification,
-                        parse_mode="Markdown"
-                    )
-                    logger.info(f"通知发送成功！已向所有者 {OWNER_ID} 发送投稿通知，投稿人: {user_id}")
+                    # 尝试获取机器人与用户的聊天状态
+                    chat = await context.bot.get_chat(owner_id_int)
+                    logger.info(f"成功获取与所有者的聊天信息：{chat.type}")
                 except Exception as e:
-                    logger.error(f"向所有者发送通知失败: 错误类型: {type(e)}, 详细信息: {str(e)}")
-                    logger.error("异常追踪: ", exc_info=True)
-                    
-                    # 检查是否是Markdown解析错误
-                    if "can't parse entities" in str(e).lower() or "entity" in str(e).lower():
-                        logger.info("可能是Markdown解析错误，尝试不使用格式发送...")
-                        try:
-                            await context.bot.send_message(
-                                chat_id=owner_id_int,
-                                text=owner_notification,
-                                parse_mode=None  # 不使用任何格式
-                            )
-                            logger.info("不使用格式的通知发送成功！")
-                        except Exception as e2:
-                            logger.error(f"不使用格式的通知也发送失败: {e2}")
-                            # 继续尝试简化消息
-                            raise
-                    
-                    # 尝试发送简化消息
-                    logger.info("尝试发送简化消息...")
+                    logger.warning(f"无法获取与所有者的聊天信息: {e}")
+                    logger.info("所有者可能需要先发送消息给机器人以启动对话")
+                
+                # 尝试发送消息
+                for retry in range(3):  # 最多尝试3次
                     try:
-                        owner_simple_notification = f"新投稿通知 - 投稿人: {real_username} (ID: {user_id})"
-                        await context.bot.send_message(
+                        message = await context.bot.send_message(
                             chat_id=owner_id_int,
-                            text=owner_simple_notification
+                            text=owner_notification,
+                            parse_mode="Markdown"
                         )
-                        logger.info("简化消息发送成功")
-                    except Exception as e2:
-                        logger.error(f"简化消息也发送失败: {e2}")
+                        logger.info(f"通知发送成功！消息ID: {message.message_id}")
+                        break  # 发送成功，跳出循环
+                    except Exception as e:
+                        if "parse entities" in str(e).lower():
+                            # Markdown解析错误，尝试无格式发送
+                            logger.warning(f"Markdown解析错误: {e}")
+                            try:
+                                message = await context.bot.send_message(
+                                    chat_id=owner_id_int,
+                                    text=owner_notification,
+                                    parse_mode=None
+                                )
+                                logger.info("使用纯文本格式成功发送通知")
+                                break  # 发送成功，跳出循环
+                            except Exception as e2:
+                                logger.error(f"纯文本发送也失败: {e2}")
+                        else:
+                            logger.error(f"尝试发送通知失败 (第{retry+1}次): {e}")
                         
-                        # 最后一次尝试 - 直接向用户发送失败通知
-                        try:
-                            owner_error_notification = f"⚠️ 通知系统错误：无法向所有者 {OWNER_ID} 发送通知。请联系开发者。"
-                            await update.message.reply_text(owner_error_notification)
-                            logger.info("已向用户发送通知失败的消息")
-                        except Exception as e3:
-                            logger.error(f"向用户发送通知失败消息也失败: {e3}")
+                        # 最后一次尝试简化消息
+                        if retry == 2:  # 最后一次尝试
+                            try:
+                                simple_msg = f"新投稿通知 - 投稿人: {real_username} (ID: {user_id})"
+                                await context.bot.send_message(
+                                    chat_id=owner_id_int,
+                                    text=simple_msg
+                                )
+                                logger.info("使用简化消息成功发送通知")
+                            except Exception as e3:
+                                logger.error(f"所有通知方式均失败: {e3}")
+                                # 通知用户有问题
+                                await update.message.reply_text(
+                                    "⚠️ 投稿已发布，但无法通知管理员。请直接联系管理员。"
+                                )
             except ValueError as e:
                 logger.error(f"OWNER_ID格式不正确，无法转换为整数: {OWNER_ID}, 错误: {e}")
                 await update.message.reply_text(f"⚠️ 配置错误：OWNER_ID格式不正确。请联系开发者修复配置。")
             except Exception as e:
                 logger.error(f"处理通知过程中发生其他错误: 错误类型: {type(e)}, 详细信息: {str(e)}")
                 logger.error("异常追踪: ", exc_info=True)
-                try:
-                    await update.message.reply_text("⚠️ 通知系统错误，请联系开发者。")
-                except:
-                    pass
         else:
             logger.info(f"不发送通知: NOTIFY_OWNER={NOTIFY_OWNER}, OWNER_ID={OWNER_ID}")
         

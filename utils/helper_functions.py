@@ -18,6 +18,16 @@ logger = logging.getLogger(__name__)
 # 标签分割正则表达式
 TAG_SPLIT_PATTERN = re.compile(r'[,\s，]+')
 
+# 配置常量
+CONFIG = {
+    "VERSION": "1.0.0",
+    "MAX_MEDIA_COUNT": 10,
+    "MAX_DOCUMENT_COUNT": 10,
+    "NET_TIMEOUT": 30,  # 网络超时时间（秒）
+    "MAX_RETRIES": 3,   # 最大重试次数
+    "RETRY_DELAY": 2,   # 重试延迟（秒）
+}
+
 @lru_cache(maxsize=128)
 def process_tags(raw_tags: str) -> tuple:
     """
@@ -262,3 +272,160 @@ async def safe_send(send_func, *args, **kwargs):
     
     # 所有重试都失败，但我们不想中断流程，所以返回 None
     return None
+
+# 增强型安全发送函数
+async def enhanced_safe_send(send_func, *args, **kwargs):
+    """
+    增强型安全发送函数，提供更全面的错误处理和重试逻辑
+    
+    Args:
+        send_func: 发送函数
+        args: 位置参数
+        kwargs: 关键字参数
+        
+    Returns:
+        发送结果或None（如果失败）
+    """
+    max_retries = CONFIG["MAX_RETRIES"]
+    base_delay = CONFIG["RETRY_DELAY"]
+    current_attempt = 0
+    last_error = None
+    
+    while current_attempt <= max_retries:
+        try:
+            return await asyncio.wait_for(send_func(*args, **kwargs), timeout=NET_TIMEOUT)
+        except asyncio.TimeoutError:
+            current_attempt += 1
+            last_error = f"网络请求超时 (尝试 {current_attempt}/{max_retries + 1})"
+            
+            if current_attempt <= max_retries:
+                # 使用指数退避算法
+                delay = base_delay * (2 ** (current_attempt - 1))
+                logger.info(f"发送超时，将在 {delay} 秒后重试 ({current_attempt}/{max_retries})...")
+                await asyncio.sleep(delay)
+            else:
+                logger.warning(f"发送失败: {last_error}")
+        
+        except Exception as e:
+            error_text = str(e).lower()
+            
+            # 处理Markdown/HTML解析错误
+            if "parse" in error_text and ("entities" in error_text or "html" in error_text):
+                logger.warning(f"格式解析错误，尝试无格式发送: {e}")
+                try:
+                    # 移除解析模式参数
+                    if 'parse_mode' in kwargs:
+                        kwargs_copy = kwargs.copy()
+                        kwargs_copy.pop('parse_mode')
+                        return await asyncio.wait_for(send_func(*args, **kwargs_copy), timeout=NET_TIMEOUT)
+                except Exception as e2:
+                    logger.error(f"无格式发送也失败: {e2}")
+            
+            # 处理网络相关错误
+            elif any(kw in error_text for kw in ["network", "connection", "timeout"]):
+                current_attempt += 1
+                if current_attempt <= max_retries:
+                    # 使用指数退避算法
+                    delay = base_delay * (2 ** (current_attempt - 1))
+                    logger.info(f"网络错误，将在 {delay} 秒后重试 ({current_attempt}/{max_retries}): {e}")
+                    await asyncio.sleep(delay)
+                    continue
+            
+            # 处理权限错误
+            elif any(kw in error_text for kw in ["forbidden", "permission", "not enough rights", "blocked"]):
+                logger.error(f"权限错误，无法发送消息: {e}")
+                return None
+            
+            # 处理请求错误
+            elif "bad request" in error_text:
+                logger.error(f"无效请求错误: {e}")
+                # 检查是否需要重试
+                if "retry after" in error_text:
+                    # 提取需要等待的秒数
+                    import re
+                    retry_seconds = 1
+                    match = re.search(r"retry after (\d+)", error_text)
+                    if match:
+                        retry_seconds = int(match.group(1))
+                    
+                    logger.info(f"请求过于频繁，等待 {retry_seconds} 秒后重试")
+                    await asyncio.sleep(retry_seconds)
+                    continue
+                return None
+            
+            # 其他错误
+            else:
+                logger.error(f"发送失败，未知错误: {e}")
+            
+            return None
+    
+    # 所有重试都失败
+    logger.error(f"发送失败，已达到最大重试次数: {last_error}")
+    return None
+
+# 安全消息发送函数
+async def send_message_safe(context, chat_id, text, **kwargs):
+    """
+    安全发送文本消息
+    
+    Args:
+        context: 上下文对象
+        chat_id: 聊天ID
+        text: 消息文本
+        kwargs: 其他参数
+        
+    Returns:
+        发送的消息对象或None
+    """
+    return await enhanced_safe_send(context.bot.send_message, chat_id=chat_id, text=text, **kwargs)
+
+async def reply_text_safe(message, text, **kwargs):
+    """
+    安全回复文本消息
+    
+    Args:
+        message: 消息对象
+        text: 回复文本
+        kwargs: 其他参数
+        
+    Returns:
+        回复的消息对象或None
+    """
+    return await enhanced_safe_send(message.reply_text, text=text, **kwargs)
+
+async def send_media_group_safe(context, chat_id, media, **kwargs):
+    """
+    安全发送媒体组
+    
+    Args:
+        context: 上下文对象
+        chat_id: 聊天ID
+        media: 媒体列表
+        kwargs: 其他参数
+        
+    Returns:
+        发送的媒体消息列表或None
+    """
+    return await enhanced_safe_send(context.bot.send_media_group, chat_id=chat_id, media=media, **kwargs)
+
+async def edit_message_text_safe(context, chat_id, message_id, text, **kwargs):
+    """
+    安全编辑消息文本
+    
+    Args:
+        context: 上下文对象
+        chat_id: 聊天ID
+        message_id: 消息ID
+        text: 新文本
+        kwargs: 其他参数
+        
+    Returns:
+        编辑后的消息对象或None
+    """
+    return await enhanced_safe_send(
+        context.bot.edit_message_text,
+        chat_id=chat_id,
+        message_id=message_id,
+        text=text,
+        **kwargs
+    )

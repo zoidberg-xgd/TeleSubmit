@@ -38,6 +38,10 @@ def cleanup_old_logs(log_dir, days_to_keep=7):
         # 获取所有日志文件
         log_files = glob.glob(os.path.join(log_dir, "*.log*"))
         
+        logger = logging.getLogger(__name__)
+        logger.info(f"开始清理日志文件，保留最近 {days_to_keep} 天的日志")
+        deleted_count = 0
+        
         for log_file in log_files:
             # 获取文件修改时间
             file_time = os.path.getmtime(log_file)
@@ -45,11 +49,14 @@ def cleanup_old_logs(log_dir, days_to_keep=7):
             if file_time < threshold:
                 try:
                     os.remove(log_file)
-                    print(f"删除过期日志文件: {log_file}")
+                    deleted_count += 1
+                    logger.info(f"删除过期日志文件: {log_file}")
                 except Exception as e:
-                    print(f"删除日志文件 {log_file} 失败: {e}")
+                    logger.error(f"删除日志文件 {log_file} 失败: {e}")
+        
+        logger.info(f"日志清理完成，共删除 {deleted_count} 个过期文件")
     except Exception as e:
-        print(f"清理日志文件时出错: {e}")
+        logger.error(f"清理日志文件时出错: {e}")
 
 # 配置基本日志
 def setup_logging():
