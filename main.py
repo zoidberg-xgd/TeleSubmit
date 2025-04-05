@@ -109,9 +109,11 @@ async def check_conversation_timeout(update: Update, context: CallbackContext) -
     
     user_id = update.effective_user.id
     
-    # 跳过检查命令消息
+    # 对命令消息进行特殊处理 - 命令直接通过，不检查超时
     if update.message and update.message.text and update.message.text.startswith('/'):
-        logger.debug(f"跳过对命令消息的超时检查: {update.message.text}")
+        command = update.message.text.split()[0]  # 获取命令部分
+        logger.debug(f"跳过命令消息的超时检查: {command}")
+        # 关键点：对于命令消息，不进行任何阻止，直接通过
         return
     
     # 检查用户是否在黑名单中
@@ -157,6 +159,13 @@ async def check_conversation_timeout(update: Update, context: CallbackContext) -
         # 出错时不阻止消息处理继续，而是让正常流程继续
     
     return
+
+# 添加全局更新记录器
+async def log_all_updates(update: Update, context: CallbackContext) -> None:
+    """记录所有接收到的更新"""
+    if update.message and update.message.text:
+        logger.info(f"收到命令: {update.message.text} 来自用户: {update.effective_user.id}")
+    return None  # 允许更新继续传递给其他处理器
 
 async def main():
     """
@@ -223,100 +232,121 @@ def setup_application(application):
     """
     初始化和配置应用程序
     """
+    # 首先设置全局记录器为最高优先级
+    application.add_handler(MessageHandler(filters.ALL, log_all_updates), group=-999)
+    
+    # 添加黑名单管理命令和调试命令（设置为最高优先级，不可被其他处理器拦截）
+    try:
+        logger.info("注册高优先级命令处理器...")
+        application.add_handler(CommandHandler('debug', debug), group=-998)
+        application.add_handler(CommandHandler('blacklist_add', blacklist_add), group=-998)
+        application.add_handler(CommandHandler('blacklist_remove', blacklist_remove), group=-998)
+        application.add_handler(CommandHandler('blacklist_list', blacklist_list), group=-998)
+        application.add_handler(CommandHandler('start', start), group=-998)  # start命令也设为高优先级
+        application.add_handler(CommandHandler('cancel', cancel), group=-998)  # cancel命令设为高优先级
+        logger.info("高优先级命令处理器注册完成")
+    except Exception as e:
+        logger.error(f"注册高优先级命令处理器失败: {e}", exc_info=True)
+    
     # 注册错误处理
     application.add_error_handler(error_handler)
     
-    # 注册命令处理器
+    # 注册基本命令处理器
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("settings", settings))
     application.add_handler(CommandHandler("blacklist", manage_blacklist), group=1)
     
-    # 注册会话超时检查处理器 (最高优先级组)
+    # 注册会话超时检查处理器
     application.add_handler(MessageHandler(filters.ALL, check_conversation_timeout), group=0)
     
-    # 添加会话处理器
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("submit", start), CommandHandler("start", start)],
-        states={
-            # 模式选择状态
-            STATE.get('START_MODE', 0): [MessageHandler(filters.TEXT & ~filters.COMMAND, select_mode)],
-            
-            # 文档和媒体处理状态
-            STATE.get('MEDIA', 2): [
-                MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
-                             filters.Document.Category("animation") | filters.Document.AUDIO, 
-                             handle_media),
-                CommandHandler('done_media', done_media),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
-            ],
-            STATE.get('DOC', 1): [
-                MessageHandler(filters.Document.ALL, handle_doc),
-                CommandHandler('done_doc', done_doc),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_doc)
-            ],
-            
-            # 其他状态
-            STATE.get('TEXT', 10): [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)],
-            STATE.get('IMAGE', 11): [
-                MessageHandler(filters.PHOTO | filters.CAPTION, handle_image),
-                CommandHandler("done_img", done_image)
-            ],
-            STATE.get('EXTRA', 12): [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_extra)],
-            STATE.get('PUBLISH', 13): [
-                CallbackQueryHandler(publish_submission, pattern="^publish$"),
-                CallbackQueryHandler(cancel, pattern="^cancel$")
-            ],
-            
-            # 投稿处理状态
-            STATE.get('TAG', 4): [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_tag)],
-            STATE.get('LINK', 5): [
-                CommandHandler('skip_optional', skip_optional_link),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link)
-            ],
-            STATE.get('TITLE', 6): [
-                CommandHandler('skip_optional', skip_optional_title),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_title)
-            ],
-            STATE.get('NOTE', 7): [
-                CommandHandler('skip_optional', skip_optional_note),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_note)
-            ],
-            STATE.get('SPOILER', 8): [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spoiler)]
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        name="submission_conversation",
-        persistent=False,
-    )
-    
-    application.add_handler(conv_handler, group=2)
+    try:
+        # 添加会话处理器
+        logger.info("注册会话处理器...")
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("submit", start)],  # start命令已在高优先级注册
+            states={
+                # 模式选择状态
+                STATE.get('START_MODE', 0): [MessageHandler(filters.TEXT & ~filters.COMMAND, select_mode)],
+                
+                # 文档和媒体处理状态
+                STATE.get('MEDIA', 2): [
+                    MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.AUDIO |
+                                 filters.Document.Category("animation") | filters.Document.AUDIO, 
+                                 handle_media),
+                    CommandHandler('done_media', done_media),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_media)
+                ],
+                STATE.get('DOC', 1): [
+                    MessageHandler(filters.Document.ALL, handle_doc),
+                    CommandHandler('done_doc', done_doc),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_doc)
+                ],
+                
+                # 其他状态
+                STATE.get('TEXT', 10): [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)],
+                STATE.get('IMAGE', 11): [
+                    MessageHandler(filters.PHOTO | filters.CAPTION, handle_image),
+                    CommandHandler("done_img", done_image)
+                ],
+                STATE.get('EXTRA', 12): [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_extra)],
+                STATE.get('PUBLISH', 13): [
+                    CallbackQueryHandler(publish_submission, pattern="^publish$"),
+                    CallbackQueryHandler(cancel, pattern="^cancel$")
+                ],
+                
+                # 投稿处理状态
+                STATE.get('TAG', 4): [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_tag)],
+                STATE.get('LINK', 5): [
+                    CommandHandler('skip_optional', skip_optional_link),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link)
+                ],
+                STATE.get('TITLE', 6): [
+                    CommandHandler('skip_optional', skip_optional_title),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_title)
+                ],
+                STATE.get('NOTE', 7): [
+                    CommandHandler('skip_optional', skip_optional_note),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_note)
+                ],
+                STATE.get('SPOILER', 8): [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spoiler)]
+            },
+            fallbacks=[CommandHandler("cancel", cancel)],
+            name="submission_conversation",
+            persistent=False,
+        )
+        
+        application.add_handler(conv_handler, group=2)
+        logger.info("会话处理器注册完成")
+    except Exception as e:
+        logger.error(f"注册会话处理器失败: {e}", exc_info=True)
     
     # 添加回调查询处理器
     application.add_handler(CallbackQueryHandler(settings_callback), group=3)
     
-    # 添加黑名单管理命令
-    application.add_handler(CommandHandler('blacklist_add', blacklist_add))
-    application.add_handler(CommandHandler('blacklist_remove', blacklist_remove))
-    application.add_handler(CommandHandler('blacklist_list', blacklist_list))
+    # 添加周期性清理任务
+    try:
+        logger.info("设置定期任务...")
+        job_queue = application.job_queue
+        job_queue.run_repeating(
+            lambda context: asyncio.create_task(cleanup_old_data()), 
+            interval=300, 
+            first=10
+        )
+        
+        # 添加周期性清理日志任务
+        def clean_logs_job(context):
+            """定期清理日志文件"""
+            logger.info("执行定期日志清理任务")
+            cleanup_old_logs("logs")
+            
+        # 每天凌晨3点执行一次日志清理
+        job_queue.run_daily(clean_logs_job, time=datetime_time(hour=3, minute=0))
+        logger.info("定期任务设置完成")
+    except Exception as e:
+        logger.error(f"设置定期任务失败: {e}", exc_info=True)
     
     # 添加未处理消息的捕获处理器 (最低优先级组)
     application.add_handler(MessageHandler(filters.ALL, catch_all), group=999)
-    
-    # 添加周期性清理任务
-    job_queue = application.job_queue
-    job_queue.run_repeating(
-        lambda context: asyncio.create_task(cleanup_old_data()), 
-        interval=300, 
-        first=10
-    )
-    
-    # 添加周期性清理日志任务
-    def clean_logs_job(context):
-        """定期清理日志文件"""
-        logger.info("执行定期日志清理任务")
-        cleanup_old_logs("logs")
-        
-    # 每天凌晨3点执行一次日志清理
-    job_queue.run_daily(clean_logs_job, time=datetime_time(hour=3, minute=0))
     
     logger.info("应用程序设置完成")
 

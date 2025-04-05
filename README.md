@@ -49,10 +49,10 @@
    # 复制示例配置文件
    cp config.ini.example config.ini
    
-   # 或使用环境变量
+   # 或使用环境变量配置
    cp .env.example .env
    
-   # 编辑配置文件
+   # 编辑配置文件，填入您的Telegram机器人令牌、频道ID和所有者ID
    nano config.ini
    ```
 
@@ -141,17 +141,21 @@ NOTIFY_OWNER=True
 - `/blacklist_add <用户ID> [原因]` - 将用户添加到黑名单
 - `/blacklist_remove <用户ID>` - 从黑名单中移除用户
 - `/blacklist_list` - 显示当前黑名单列表
+- `/debug` - 显示系统调试信息
 
 ## 项目结构
 
 ```
 TeleSubmit/
+│
 ├── config/                   # 配置设置
 │   ├── __init__.py
 │   └── settings.py           # 配置加载与管理
+│
 ├── database/                 # 数据库操作
 │   ├── __init__.py
 │   └── db_manager.py         # 数据库管理
+│
 ├── handlers/                 # 消息处理器
 │   ├── __init__.py
 │   ├── command_handlers.py   # 命令处理
@@ -162,15 +166,18 @@ TeleSubmit/
 │   ├── mode_selection.py     # 模式选择
 │   ├── publish.py            # 发布逻辑
 │   └── submit_handlers.py    # 提交处理
+│
 ├── models/                   # 数据模型
 │   ├── __init__.py
 │   └── state.py              # 状态定义
+│
 ├── utils/                    # 工具函数
 │   ├── __init__.py
 │   ├── blacklist.py          # 黑名单管理
 │   ├── database.py           # 数据库工具
 │   ├── helper_functions.py   # 辅助功能
 │   └── logging_config.py     # 日志配置
+│
 ├── logs/                     # 日志目录 (自动创建)
 ├── .env.example              # 环境变量示例
 ├── .gitignore                # Git忽略文件
@@ -179,32 +186,6 @@ TeleSubmit/
 ├── README.md                 # 说明文档
 └── requirements.txt          # 依赖项
 ```
-
-## 敏感信息保护
-
-为保证Bot Token和其他敏感信息的安全，请遵循以下最佳实践:
-
-1. **使用配置模板**
-   - 项目提供 `config.ini.example` 和 `.env.example` 作为模板
-   - 本地创建真实配置文件 (`config.ini` 或 `.env`)，填入您的敏感信息
-   - 真实配置文件已在 `.gitignore` 中设置为不提交到版本库
-
-2. **提交前检查敏感信息**
-   ```bash
-   # 检查暂存的变更中是否包含敏感信息
-   git diff --staged | grep -E "TOKEN|password|secret|key"
-   ```
-
-3. **意外提交敏感信息的补救措施**
-   ```bash
-   # 从Git历史中彻底移除敏感文件
-   git filter-branch --force --index-filter "git rm --cached --ignore-unmatch config.ini" --prune-empty --tag-name-filter cat -- --all
-   
-   # 强制推送更改
-   git push origin --force --all
-   ```
-
-   **重要**: 一旦敏感信息被推送到公共仓库，即使删除，也应视为已泄露。请立即更换您的Bot Token和其他敏感凭据。
 
 ## 黑名单功能使用指南
 

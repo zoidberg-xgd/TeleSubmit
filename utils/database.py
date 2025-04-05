@@ -3,6 +3,7 @@ import sqlite3
 import time
 import threading
 from functools import wraps
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -283,4 +284,15 @@ def get_blacklist():
             raise
         finally:
             if 'conn' in locals():
-                conn.close() 
+                conn.close()
+
+def get_all_user_states() -> Dict[int, Dict[str, Any]]:
+    """
+    获取所有用户的会话状态
+    
+    Returns:
+        Dict[int, Dict[str, Any]]: 用户ID到会话状态的映射
+    """
+    global _user_states
+    with _state_lock:
+        return _user_states.copy() 

@@ -141,9 +141,46 @@ def is_owner(user_id: int) -> bool:
     Returns:
         bool: 用户是否为机器人所有者
     """
-    if not OWNER_ID:
+    try:
+        # 记录输入参数
+        logger.info(f"is_owner被调用 - 检查用户ID: {user_id} (类型: {type(user_id)})")
+        
+        # 检查user_id是否有效
+        if user_id is None:
+            logger.warning("is_owner被调用但user_id为None")
+            return False
+            
+        # 首先检查OWNER_ID是否存在
+        if not OWNER_ID:
+            logger.warning(f"OWNER_ID未设置或为空，用户{user_id}的所有者检查失败")
+            return False
+        
+        # 确保user_id是整数
+        try:
+            user_id_int = int(user_id)
+        except (ValueError, TypeError):
+            logger.error(f"user_id无法转换为整数: {user_id}")
+            return False
+            
+        # 确保OWNER_ID是整数或者可以转换为整数
+        try:
+            owner_id_int = int(OWNER_ID)
+        except (ValueError, TypeError):
+            logger.error(f"OWNER_ID无法转换为整数: {OWNER_ID}")
+            return False
+            
+        # 使用整数进行直接比较
+        result = user_id_int == owner_id_int
+        
+        # 记录详细的日志
+        logger.warning(f"所有者检查 - 用户ID: {user_id_int}, OWNER_ID: {owner_id_int}, 结果: {result}")
+        
+        return result
+            
+    except Exception as e:
+        # 捕获任何可能的异常
+        logger.error(f"所有者检查过程中发生错误: {e}", exc_info=True)
         return False
-    return str(user_id) == OWNER_ID
 
 async def manage_blacklist(update, context):
     """

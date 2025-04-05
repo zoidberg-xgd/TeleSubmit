@@ -1,8 +1,11 @@
 """
 命令处理器模块
 """
+import json
 import logging
+import asyncio
 from datetime import datetime
+from typing import Dict, List, Any
 from telegram import Update
 from telegram.ext import ConversationHandler, CallbackContext
 
@@ -12,9 +15,11 @@ from utils.blacklist import (
     add_to_blacklist, 
     remove_from_blacklist, 
     get_blacklist, 
-    is_blacklisted
+    is_blacklisted,
+    _blacklist
 )
-from config.settings import OWNER_ID, NOTIFY_OWNER
+from config.settings import OWNER_ID, NOTIFY_OWNER, TIMEOUT
+from utils.database import get_user_state, get_all_user_states
 
 logger = logging.getLogger(__name__)
 
@@ -42,63 +47,84 @@ async def cancel(update: Update, context: CallbackContext) -> int:
 
 async def debug(update: Update, context: CallbackContext):
     """
-    调试命令，测试各种功能
+    调试命令，显示当前状态信息
     
     Args:
         update: Telegram 更新对象
         context: 回调上下文
     """
+    logger.error(f"调试命令被调用: 用户ID={update.effective_user.id}")
+    
+    # 获取用户ID
     user_id = update.effective_user.id
-    logger.info(f"收到调试命令，user_id: {user_id}")
     
-    # 检查是否为所有者
-    if not is_owner(user_id):
-        logger.warning(f"非所有者用户 {user_id} 尝试使用调试命令")
-        await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
-        return
-    
-    # 获取当前配置信息
-    config_info = (
-        f"📊 当前配置信息:\n\n"
-        f"OWNER_ID: {OWNER_ID} (类型: {type(OWNER_ID)})\n"
-        f"NOTIFY_OWNER: {NOTIFY_OWNER}\n"
-    )
-    
-    await update.message.reply_text(config_info)
-    
-    # 测试通知功能
+    # 构建调试信息
     try:
-        logger.info("测试向所有者发送通知...")
-        test_notification = (
-            f"🔔 这是一条测试通知\n\n"
-            f"如果您看到这条消息，说明通知功能正常工作。\n"
-            f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        from config.settings import OWNER_ID, CHANNEL_ID, BOT_MODE, SHOW_SUBMITTER, NOTIFY_OWNER
+        
+        debug_info = (
+            "🔍 **调试信息**\n\n"
+            f"👤 您的用户ID: `{user_id}`\n"
+            f"🤖 机器人所有者ID: `{OWNER_ID}`\n"
+            f"✅ 您是所有者: {is_owner(user_id)}\n\n"
+            f"📺 频道ID: {CHANNEL_ID}\n"
+            f"🔄 机器人模式: {BOT_MODE}\n"
+            f"👁️ 显示投稿人: {SHOW_SUBMITTER}\n"
+            f"📲 通知所有者: {NOTIFY_OWNER}\n"
+            f"⏱️ 会话超时: {TIMEOUT}秒\n\n"
+            f"🗄️ 黑名单用户数: {len(_blacklist)}\n"
+            f"📂 用户会话数: {len(get_all_user_states())}\n"
+            f"🕒 服务器时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         )
         
-        # 确保OWNER_ID被转换为整数
+        # 获取系统信息
+        import platform
+        import psutil
+        
         try:
-            owner_id_int = int(OWNER_ID)
-            await context.bot.send_message(
-                chat_id=owner_id_int,
-                text=test_notification
+            process = psutil.Process()
+            memory_usage = process.memory_info().rss / 1024 / 1024  # MB
+            cpu_percent = process.cpu_percent(interval=0.1)
+            uptime = (datetime.now() - datetime.fromtimestamp(process.create_time())).total_seconds() / 60  # 分钟
+            
+            system_info = (
+                "\n📊 **系统信息**\n\n"
+                f"💻 操作系统: {platform.system()} {platform.release()}\n"
+                f"🐍 Python版本: {platform.python_version()}\n"
+                f"📈 CPU使用率: {cpu_percent:.1f}%\n"
+                f"🧠 内存使用: {memory_usage:.1f} MB\n"
+                f"⏲️ 运行时间: {int(uptime)} 分钟\n"
             )
-            logger.info(f"测试通知发送成功")
-            await update.message.reply_text("✅ 测试通知已发送，请检查您是否收到")
-        except ValueError as e:
-            error_msg = f"❌ OWNER_ID格式不正确，无法转换为整数: {e}"
-            logger.error(error_msg)
-            await update.message.reply_text(error_msg)
+            
+            debug_info += system_info
         except Exception as e:
-            error_msg = f"❌ 发送测试通知失败: {str(e)}"
-            logger.error(error_msg)
-            await update.message.reply_text(error_msg)
+            logger.warning(f"获取系统信息失败: {e}")
+            debug_info += "\n⚠️ 无法获取系统信息"
+        
+        try:
+            # 尝试使用Markdown格式发送
+            await update.message.reply_text(debug_info, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"Markdown格式发送失败: {e}，尝试纯文本")
+            try:
+                # 如果Markdown失败，尝试纯文本
+                plain_debug_info = debug_info.replace('**', '').replace('`', '')
+                await update.message.reply_text(plain_debug_info)
+            except Exception as e2:
+                logger.error(f"发送调试信息失败: {e2}")
+                await update.message.reply_text("❌ 发送调试信息失败")
     except Exception as e:
-        error_msg = f"❌ 测试通知过程中发生错误: {str(e)}"
-        logger.error(error_msg)
-        await update.message.reply_text(error_msg)
+        logger.error(f"生成调试信息时发生错误: {e}", exc_info=True)
+        try:
+            await update.message.reply_text(f"❌ 生成调试信息时发生错误: {str(e)[:100]}")
+        except Exception as e2:
+            logger.error(f"发送错误消息失败: {e2}")
     
     # 返回调试结果
-    await update.message.reply_text("🔍 调试命令执行完毕")
+    try:
+        await update.message.reply_text("🔍 调试命令执行完毕")
+    except Exception as e:
+        logger.error(f"发送完成消息失败: {e}")
 
 async def catch_all(update: Update, context: CallbackContext):
     """
@@ -120,18 +146,26 @@ async def blacklist_add(update: Update, context: CallbackContext):
         update: Telegram 更新对象
         context: 回调上下文
     """
+    logger.error(f"黑名单添加命令被调用: 用户ID={update.effective_user.id}")
+    
     user_id = update.effective_user.id
     
     # 检查是否为所有者
     if not is_owner(user_id):
         logger.warning(f"非所有者用户 {user_id} 尝试使用黑名单添加命令")
-        await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
+        try:
+            await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
+        except Exception as e:
+            logger.error(f"发送权限拒绝消息失败: {e}")
         return
     
     # 检查参数
     args = context.args
     if not args or len(args) < 1:
-        await update.message.reply_text("⚠️ 使用方法: /blacklist_add <user_id> [原因]")
+        try:
+            await update.message.reply_text("⚠️ 使用方法: /blacklist_add <user_id> [原因]")
+        except Exception as e:
+            logger.error(f"发送格式提示消息失败: {e}")
         return
     
     try:
@@ -141,14 +175,27 @@ async def blacklist_add(update: Update, context: CallbackContext):
         # 添加到黑名单
         success = await add_to_blacklist(target_user_id, reason)
         if success:
-            await update.message.reply_text(f"✅ 已将用户 {target_user_id} 添加到黑名单\n原因: {reason}")
+            try:
+                await update.message.reply_text(f"✅ 已将用户 {target_user_id} 添加到黑名单\n原因: {reason}")
+                logger.info(f"用户 {user_id} 成功将 {target_user_id} 添加到黑名单，原因: {reason}")
+            except Exception as e:
+                logger.error(f"发送成功消息失败: {e}")
         else:
-            await update.message.reply_text(f"❌ 添加用户 {target_user_id} 到黑名单时出错")
+            try:
+                await update.message.reply_text(f"❌ 添加用户 {target_user_id} 到黑名单时出错")
+            except Exception as e:
+                logger.error(f"发送失败消息失败: {e}")
     except ValueError:
-        await update.message.reply_text("⚠️ 用户ID必须是数字")
+        try:
+            await update.message.reply_text("⚠️ 用户ID必须是数字")
+        except Exception as e:
+            logger.error(f"发送ID格式错误消息失败: {e}")
     except Exception as e:
-        logger.error(f"处理黑名单添加命令时出错: {e}")
-        await update.message.reply_text("❌ 处理命令时发生错误")
+        logger.error(f"处理黑名单添加命令时出错: {e}", exc_info=True)
+        try:
+            await update.message.reply_text(f"❌ 处理命令时发生错误: {str(e)[:100]}")
+        except Exception as e2:
+            logger.error(f"发送错误消息失败: {e2}")
 
 async def blacklist_remove(update: Update, context: CallbackContext):
     """
@@ -160,18 +207,26 @@ async def blacklist_remove(update: Update, context: CallbackContext):
         update: Telegram 更新对象
         context: 回调上下文
     """
+    logger.error(f"黑名单移除命令被调用: 用户ID={update.effective_user.id}")
+    
     user_id = update.effective_user.id
     
     # 检查是否为所有者
     if not is_owner(user_id):
         logger.warning(f"非所有者用户 {user_id} 尝试使用黑名单移除命令")
-        await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
+        try:
+            await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
+        except Exception as e:
+            logger.error(f"发送权限拒绝消息失败: {e}")
         return
     
     # 检查参数
     args = context.args
     if not args or len(args) < 1:
-        await update.message.reply_text("⚠️ 使用方法: /blacklist_remove <user_id>")
+        try:
+            await update.message.reply_text("⚠️ 使用方法: /blacklist_remove <user_id>")
+        except Exception as e:
+            logger.error(f"发送格式提示消息失败: {e}")
         return
     
     try:
@@ -180,14 +235,27 @@ async def blacklist_remove(update: Update, context: CallbackContext):
         # 从黑名单中移除
         success = await remove_from_blacklist(target_user_id)
         if success:
-            await update.message.reply_text(f"✅ 已将用户 {target_user_id} 从黑名单中移除")
+            try:
+                await update.message.reply_text(f"✅ 已将用户 {target_user_id} 从黑名单中移除")
+                logger.info(f"用户 {user_id} 成功将 {target_user_id} 从黑名单中移除")
+            except Exception as e:
+                logger.error(f"发送成功消息失败: {e}")
         else:
-            await update.message.reply_text(f"❓ 用户 {target_user_id} 不在黑名单中")
+            try:
+                await update.message.reply_text(f"❓ 用户 {target_user_id} 不在黑名单中")
+            except Exception as e:
+                logger.error(f"发送失败消息失败: {e}")
     except ValueError:
-        await update.message.reply_text("⚠️ 用户ID必须是数字")
+        try:
+            await update.message.reply_text("⚠️ 用户ID必须是数字")
+        except Exception as e:
+            logger.error(f"发送ID格式错误消息失败: {e}")
     except Exception as e:
-        logger.error(f"处理黑名单移除命令时出错: {e}")
-        await update.message.reply_text("❌ 处理命令时发生错误")
+        logger.error(f"处理黑名单移除命令时出错: {e}", exc_info=True)
+        try:
+            await update.message.reply_text(f"❌ 处理命令时发生错误: {str(e)[:100]}")
+        except Exception as e2:
+            logger.error(f"发送错误消息失败: {e2}")
 
 async def blacklist_list(update: Update, context: CallbackContext):
     """
@@ -199,12 +267,17 @@ async def blacklist_list(update: Update, context: CallbackContext):
         update: Telegram 更新对象
         context: 回调上下文
     """
+    logger.error(f"黑名单列表命令被调用: 用户ID={update.effective_user.id}")
+    
     user_id = update.effective_user.id
     
     # 检查是否为所有者
     if not is_owner(user_id):
         logger.warning(f"非所有者用户 {user_id} 尝试使用黑名单列表命令")
-        await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
+        try:
+            await update.message.reply_text("⚠️ 只有机器人所有者才能使用此命令")
+        except Exception as e:
+            logger.error(f"发送权限拒绝消息失败: {e}")
         return
     
     try:
@@ -212,7 +285,11 @@ async def blacklist_list(update: Update, context: CallbackContext):
         blacklist = await get_blacklist()
         
         if not blacklist:
-            await update.message.reply_text("📋 黑名单为空")
+            try:
+                await update.message.reply_text("📋 黑名单为空")
+                logger.info("黑名单为空，返回空列表")
+            except Exception as e:
+                logger.error(f"发送空黑名单消息失败: {e}")
             return
         
         # 格式化黑名单消息
@@ -222,7 +299,22 @@ async def blacklist_list(update: Update, context: CallbackContext):
             message += f"   原因: {user['reason']}\n"
             message += f"   添加时间: {user['added_at']}\n\n"
         
-        await update.message.reply_text(message, parse_mode="Markdown")
+        try:
+            # 尝试带Markdown格式发送
+            await update.message.reply_text(message, parse_mode="Markdown")
+            logger.info(f"成功发送黑名单列表给用户 {user_id}")
+        except Exception as e:
+            logger.warning(f"Markdown格式发送失败: {e}，尝试纯文本")
+            try:
+                # 如果Markdown失败，尝试纯文本
+                plain_message = message.replace('**', '').replace('`', '')
+                await update.message.reply_text(plain_message)
+                logger.info(f"成功以纯文本格式发送黑名单列表给用户 {user_id}")
+            except Exception as e2:
+                logger.error(f"发送黑名单列表失败: {e2}")
     except Exception as e:
-        logger.error(f"处理黑名单列表命令时出错: {e}")
-        await update.message.reply_text("❌ 获取黑名单时发生错误")
+        logger.error(f"处理黑名单列表命令时出错: {e}", exc_info=True)
+        try:
+            await update.message.reply_text(f"❌ 获取黑名单时发生错误: {str(e)[:100]}")
+        except Exception as e2:
+            logger.error(f"发送错误消息失败: {e2}")
