@@ -163,7 +163,12 @@ async def blacklist_add(update: Update, context: CallbackContext):
     args = context.args
     if not args or len(args) < 1:
         try:
-            await update.message.reply_text("⚠️ 使用方法: /blacklist_add <user_id> [原因]")
+            await update.message.reply_text(
+                "⚠️ 命令格式错误\n\n"
+                "正确格式: /blacklist_add <用户ID> [原因]\n"
+                "例如: /blacklist_add 123456789 发送垃圾内容\n\n"
+                "用户ID必须是数字，可以通过用户的投稿通知获取"
+            )
         except Exception as e:
             logger.error(f"发送格式提示消息失败: {e}")
         return
@@ -187,7 +192,11 @@ async def blacklist_add(update: Update, context: CallbackContext):
                 logger.error(f"发送失败消息失败: {e}")
     except ValueError:
         try:
-            await update.message.reply_text("⚠️ 用户ID必须是数字")
+            await update.message.reply_text(
+                "⚠️ 用户ID格式错误\n\n"
+                "用户ID必须是数字（例如：123456789）\n"
+                "您可以从投稿通知消息中获取用户ID，或者使用 @userinfobot 机器人查询"
+            )
         except Exception as e:
             logger.error(f"发送ID格式错误消息失败: {e}")
     except Exception as e:
@@ -224,7 +233,12 @@ async def blacklist_remove(update: Update, context: CallbackContext):
     args = context.args
     if not args or len(args) < 1:
         try:
-            await update.message.reply_text("⚠️ 使用方法: /blacklist_remove <user_id>")
+            await update.message.reply_text(
+                "⚠️ 命令格式错误\n\n"
+                "正确格式: /blacklist_remove <用户ID>\n"
+                "例如: /blacklist_remove 123456789\n\n"
+                "用户ID必须是数字，可以通过 /blacklist_list 命令查看所有黑名单用户"
+            )
         except Exception as e:
             logger.error(f"发送格式提示消息失败: {e}")
         return
@@ -247,7 +261,11 @@ async def blacklist_remove(update: Update, context: CallbackContext):
                 logger.error(f"发送失败消息失败: {e}")
     except ValueError:
         try:
-            await update.message.reply_text("⚠️ 用户ID必须是数字")
+            await update.message.reply_text(
+                "⚠️ 用户ID格式错误\n\n"
+                "用户ID必须是数字（例如：123456789）\n"
+                "请使用 /blacklist_list 命令查看所有黑名单用户的ID"
+            )
         except Exception as e:
             logger.error(f"发送ID格式错误消息失败: {e}")
     except Exception as e:

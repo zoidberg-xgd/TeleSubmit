@@ -125,14 +125,37 @@ async def publish_submission(update: Update, context: CallbackContext) -> int:
             user = update.effective_user
             real_username = user.username or username
             
-            # 构建通知消息
-            owner_notification = (
+            # 安全处理可能缺失的数据字段
+            try:
+                mode = data["mode"] if "mode" in data else "未知"
+                media_count = len(json.loads(data["image_id"])) if "image_id" in data and data["image_id"] else 0
+                doc_count = len(json.loads(data["document_id"])) if "document_id" in data and data["document_id"] else 0
+                tag_text = data["tag"] if "tag" in data else "无"
+                title_text = data["title"] if "title" in data else "无"
+                spoiler_text = "是" if "spoiler" in data and data["spoiler"] == "true" else "否"
+            except Exception as e:
+                logger.error(f"数据处理错误: {e}")
+                # 设置默认值
+                mode = "未知"
+                media_count = 0
+                doc_count = 0
+                tag_text = "无"
+                title_text = "无"
+                spoiler_text = "否"
+            
+            # 构建纯文本通知消息（不使用任何Markdown，确保最大兼容性）
+            notification_text = (
                 f"📨 新投稿通知\n\n"
-                f"👤 投稿人ID: `{user_id}`\n"
-                f"📛 用户名: {('@' + real_username) if user.username else real_username}\n"
-                f"🔗 投稿链接: {submission_link}\n\n"
-                f"要封禁此用户，请发送:\n"
-                f"`/blacklist_add {user_id} 违规内容`"
+                f"👤 投稿人信息:\n"
+                f"  • ID: {user_id}\n"
+                f"  • 用户名: {('@' + real_username) if user.username else real_username}\n"
+                f"  • 昵称: {user.first_name}{f' {user.last_name}' if user.last_name else ''}\n\n"
+                
+                f"🔗 查看投稿: {submission_link}\n\n"
+                
+                f"⚙️ 管理操作:\n"
+                f"封禁此用户: /blacklist_add {user_id} 违规内容\n"
+                f"查看黑名单: /blacklist_list"
             )
             
             try:
@@ -141,60 +164,32 @@ async def publish_submission(update: Update, context: CallbackContext) -> int:
                 owner_id_int = int(OWNER_ID)
                 logger.info(f"转换成功，准备发送通知到: {owner_id_int}")
                 
-                # 记录通知消息内容（敏感信息脱敏）
-                logger.info(f"通知消息长度: {len(owner_notification)}, 格式: Markdown")
+                # 记录通知消息内容
+                logger.info(f"通知消息长度: {len(notification_text)}, 使用纯文本格式")
                 
-                # 先尝试验证与所有者的通信状态
+                # 简化尝试逻辑 - 直接使用纯文本，不尝试任何格式化
                 try:
-                    # 尝试获取机器人与用户的聊天状态
-                    chat = await context.bot.get_chat(owner_id_int)
-                    logger.info(f"成功获取与所有者的聊天信息：{chat.type}")
+                    message = await context.bot.send_message(
+                        chat_id=owner_id_int,
+                        text=notification_text
+                    )
+                    logger.info(f"通知发送成功！消息ID: {message.message_id}")
                 except Exception as e:
-                    logger.warning(f"无法获取与所有者的聊天信息: {e}")
-                    logger.info("所有者可能需要先发送消息给机器人以启动对话")
-                
-                # 尝试发送消息
-                for retry in range(3):  # 最多尝试3次
+                    logger.error(f"发送通知失败: {e}")
+                    # 尝试使用更简化的消息
                     try:
-                        message = await context.bot.send_message(
+                        simple_msg = f"📨 新投稿通知 - 用户 {real_username} (ID: {user_id}) 发布了新投稿\n链接: {submission_link}\n\n封禁命令: /blacklist_add {user_id} 违规内容"
+                        await context.bot.send_message(
                             chat_id=owner_id_int,
-                            text=owner_notification,
-                            parse_mode="Markdown"
+                            text=simple_msg
                         )
-                        logger.info(f"通知发送成功！消息ID: {message.message_id}")
-                        break  # 发送成功，跳出循环
-                    except Exception as e:
-                        if "parse entities" in str(e).lower():
-                            # Markdown解析错误，尝试无格式发送
-                            logger.warning(f"Markdown解析错误: {e}")
-                            try:
-                                message = await context.bot.send_message(
-                                    chat_id=owner_id_int,
-                                    text=owner_notification,
-                                    parse_mode=None
-                                )
-                                logger.info("使用纯文本格式成功发送通知")
-                                break  # 发送成功，跳出循环
-                            except Exception as e2:
-                                logger.error(f"纯文本发送也失败: {e2}")
-                        else:
-                            logger.error(f"尝试发送通知失败 (第{retry+1}次): {e}")
-                        
-                        # 最后一次尝试简化消息
-                        if retry == 2:  # 最后一次尝试
-                            try:
-                                simple_msg = f"新投稿通知 - 投稿人: {real_username} (ID: {user_id})"
-                                await context.bot.send_message(
-                                    chat_id=owner_id_int,
-                                    text=simple_msg
-                                )
-                                logger.info("使用简化消息成功发送通知")
-                            except Exception as e3:
-                                logger.error(f"所有通知方式均失败: {e3}")
-                                # 通知用户有问题
-                                await update.message.reply_text(
-                                    "⚠️ 投稿已发布，但无法通知管理员。请直接联系管理员。"
-                                )
+                        logger.info("使用简化消息成功发送通知")
+                    except Exception as e2:
+                        logger.error(f"发送简化通知也失败: {e2}")
+                        # 通知用户有问题
+                        await update.message.reply_text(
+                            "⚠️ 投稿已发布，但无法通知管理员。请直接联系管理员。"
+                        )
             except ValueError as e:
                 logger.error(f"OWNER_ID格式不正确，无法转换为整数: {OWNER_ID}, 错误: {e}")
                 await update.message.reply_text(f"⚠️ 配置错误：OWNER_ID格式不正确。请联系开发者修复配置。")
