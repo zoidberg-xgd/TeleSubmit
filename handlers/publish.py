@@ -230,121 +230,209 @@ async def handle_media_publish(context, media_list, caption, spoiler_flag):
     Returns:
         发送的消息对象或None
     """
+    # 检查caption长度，如果过长先单独发送
+    caption_message = None
+    
+    # 强制检查caption长度，保证媒体组发送的可靠性
+    # 不管SHOW_SUBMITTER如何设置，当caption超过850字符时都单独发送
+    # 使用较小的阈值（850而不是1000）来确保足够的安全边际
+    if caption and len(caption) > 850:
+        logger.info(f"Caption过长 ({len(caption)} 字符)，单独发送caption")
+        try:
+            caption_message = await safe_send(
+                context.bot.send_message,
+                chat_id=CHANNEL_ID,
+                text=caption,
+                parse_mode='HTML'
+            )
+            # 媒体组将不再包含caption
+            caption = None
+        except Exception as e:
+            logger.error(f"发送长caption失败: {e}")
+            # 继续尝试发送媒体，但不带caption
+
     # 单个媒体处理
     if len(media_list) == 1:
         typ, file_id = media_list[0].split(":", 1)
         try:
+            # 如果已经单独发送了caption，则不再添加到媒体
+            media_caption = None if caption_message else caption
+            
             if typ == "photo":
-                return await safe_send(
+                sent_message = await safe_send(
                     context.bot.send_photo,
                     chat_id=CHANNEL_ID,
                     photo=file_id,
-                    caption=caption,
-                    parse_mode='HTML',
-                    has_spoiler=spoiler_flag
+                    caption=media_caption,
+                    parse_mode='HTML' if media_caption else None,
+                    has_spoiler=spoiler_flag,
+                    reply_to_message_id=caption_message.message_id if caption_message else None
                 )
             elif typ == "video":
-                return await safe_send(
+                sent_message = await safe_send(
                     context.bot.send_video,
                     chat_id=CHANNEL_ID,
                     video=file_id,
-                    caption=caption,
-                    parse_mode='HTML',
-                    has_spoiler=spoiler_flag
+                    caption=media_caption,
+                    parse_mode='HTML' if media_caption else None,
+                    has_spoiler=spoiler_flag,
+                    reply_to_message_id=caption_message.message_id if caption_message else None
                 )
             elif typ == "animation":
-                return await safe_send(
+                sent_message = await safe_send(
                     context.bot.send_animation,
                     chat_id=CHANNEL_ID,
                     animation=file_id,
-                    caption=caption,
-                    parse_mode='HTML',
-                    has_spoiler=spoiler_flag
+                    caption=media_caption,
+                    parse_mode='HTML' if media_caption else None,
+                    has_spoiler=spoiler_flag,
+                    reply_to_message_id=caption_message.message_id if caption_message else None
                 )
             elif typ == "audio":
-                return await safe_send(
+                sent_message = await safe_send(
                     context.bot.send_audio,
                     chat_id=CHANNEL_ID,
                     audio=file_id,
-                    caption=caption,
-                    parse_mode='HTML'
+                    caption=media_caption,
+                    parse_mode='HTML' if media_caption else None,
+                    reply_to_message_id=caption_message.message_id if caption_message else None
                 )
+            
+            return caption_message or sent_message
         except Exception as e:
             logger.error(f"发送单条媒体失败: {e}")
-            return None
+            return caption_message  # 如果至少发送了caption消息，则返回它
     
-    # 多个媒体处理 - 针对大量媒体文件的情况（最多50个）
+    # 多个媒体处理 - 将媒体分组，每组最多10个
     else:
         try:
-            # 尝试组合发送媒体组（Telegram限制每组最多10个）
             all_sent_messages = []
-            first_message = None
+            success_groups = 0
+            total_groups = (len(media_list) + 9) // 10  # 向上取整计算总组数
+            first_message = caption_message  # 如果单独发送了caption，用它作为第一条消息
             
             # 将媒体列表分成每组最多10个项目
             for chunk_index in range(0, len(media_list), 10):
                 media_chunk = media_list[chunk_index:chunk_index + 10]
                 media_group = []
                 
+                group_number = chunk_index // 10 + 1
+                logger.info(f"处理第{group_number}组媒体，共{len(media_chunk)}个项目 (总共{total_groups}组)")
+                
                 for i, m in enumerate(media_chunk):
                     typ, file_id = m.split(":", 1)
+                    # 只在第一组的第一个媒体添加说明（如果caption不为None且没有单独发送）
+                    # 强制设置简短的caption，即使SHOW_SUBMITTER=True也能可靠发送
+                    use_caption = caption if (chunk_index == 0 and i == 0 and caption is not None and not caption_message) else None
+                    use_parse_mode = 'HTML' if use_caption else None
+                    
                     if typ == "photo":
                         media_group.append(InputMediaPhoto(
                             media=file_id,
-                            # 只在第一组的第一个媒体添加说明
-                            caption=caption if (chunk_index == 0 and i == 0) else None,
-                            parse_mode='HTML' if (chunk_index == 0 and i == 0) else None,
+                            caption=use_caption,
+                            parse_mode=use_parse_mode,
                             has_spoiler=spoiler_flag
                         ))
                     elif typ == "video":
                         media_group.append(InputMediaVideo(
                             media=file_id,
-                            caption=caption if (chunk_index == 0 and i == 0) else None,
-                            parse_mode='HTML' if (chunk_index == 0 and i == 0) else None,
+                            caption=use_caption,
+                            parse_mode=use_parse_mode,
                             has_spoiler=spoiler_flag
                         ))
                     elif typ == "animation":
                         media_group.append(InputMediaAnimation(
                             media=file_id,
-                            caption=caption if (chunk_index == 0 and i == 0) else None,
-                            parse_mode='HTML' if (chunk_index == 0 and i == 0) else None,
+                            caption=use_caption,
+                            parse_mode=use_parse_mode,
                             has_spoiler=spoiler_flag
                         ))
                     elif typ == "audio":
                         media_group.append(InputMediaAudio(
                             media=file_id,
-                            caption=caption if (chunk_index == 0 and i == 0) else None,
-                            parse_mode='HTML' if (chunk_index == 0 and i == 0) else None
+                            caption=use_caption,
+                            parse_mode=use_parse_mode
                         ))
                 
-                # 发送当前组
-                if chunk_index == 0:
+                # 发送当前组，增加超时参数
+                extended_timeout = 60  # 更长的超时时间，避免误判为超时
+                if first_message is None:
+                    logger.info(f"发送第{group_number}组媒体（首组），{len(media_group)}个媒体项目")
                     # 第一组直接发送
-                    sent_messages = await safe_send(
-                        context.bot.send_media_group,
-                        chat_id=CHANNEL_ID,
-                        media=media_group
-                    )
-                    
-                    if sent_messages and len(sent_messages) > 0:
-                        all_sent_messages.extend(sent_messages)
-                        first_message = sent_messages[0]  # 保存第一条消息，用于回复
+                    try:
+                        sent_messages = await asyncio.wait_for(
+                            context.bot.send_media_group(
+                                chat_id=CHANNEL_ID,
+                                media=media_group
+                            ),
+                            timeout=extended_timeout
+                        )
+                        
+                        if sent_messages and len(sent_messages) > 0:
+                            all_sent_messages.extend(sent_messages)
+                            first_message = sent_messages[0]  # 保存第一条消息，用于回复
+                            logger.info(f"第{group_number}组媒体发送成功，message_id={first_message.message_id}")
+                            success_groups += 1
+                        else:
+                            logger.error(f"第{group_number}组媒体发送返回空结果")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"第{group_number}组媒体发送超时，但可能已成功发送")
+                        # 即使超时，尝试继续后续组的发送
+                        # 等待3秒，让Telegram服务器有时间处理
+                        await asyncio.sleep(3)
+                    except Exception as e:
+                        logger.error(f"第{group_number}组媒体发送失败: {e}")
+                        
+                        # 如果是网络相关错误，休眠更长时间后继续
+                        if any(keyword in str(e).lower() for keyword in ["network", "connection", "timeout"]):
+                            await asyncio.sleep(5)
                 else:
-                    # 后续组作为回复发送
-                    sent_messages = await safe_send(
-                        context.bot.send_media_group,
-                        chat_id=CHANNEL_ID,
-                        media=media_group,
-                        reply_to_message_id=first_message.message_id if first_message else None
-                    )
-                    
-                    if sent_messages and len(sent_messages) > 0:
-                        all_sent_messages.extend(sent_messages)
+                    logger.info(f"发送第{group_number}组媒体（回复组），{len(media_group)}个媒体项目，回复到message_id={first_message.message_id}")
+                    # 后续组作为回复发送到第一条消息
+                    try:
+                        sent_messages = await asyncio.wait_for(
+                            context.bot.send_media_group(
+                                chat_id=CHANNEL_ID,
+                                media=media_group,
+                                reply_to_message_id=first_message.message_id
+                            ),
+                            timeout=extended_timeout
+                        )
+                        
+                        if sent_messages and len(sent_messages) > 0:
+                            all_sent_messages.extend(sent_messages)
+                            logger.info(f"第{group_number}组媒体发送成功，第一条message_id={sent_messages[0].message_id}")
+                            success_groups += 1
+                        else:
+                            logger.error(f"第{group_number}组媒体发送返回空结果")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"第{group_number}组媒体发送超时，但可能已成功发送")
+                        # 即使超时，尝试继续后续组的发送
+                        # 等待3秒，让Telegram服务器有时间处理
+                        await asyncio.sleep(3)
+                    except Exception as e:
+                        logger.error(f"第{group_number}组媒体发送失败: {e}")
+                        
+                        # 如果是网络相关错误，休眠更长时间后继续
+                        if any(keyword in str(e).lower() for keyword in ["network", "connection", "timeout"]):
+                            await asyncio.sleep(5)
+                
+                # 添加更长的延迟，避免API限制
+                # 每组之间等待2秒，给Telegram API更多处理时间
+                await asyncio.sleep(2)
             
-            # 返回第一条消息
+            # 计算实际处理的媒体数量并记录结果
+            total_media_estimate = success_groups * 10
+            if success_groups < total_groups and len(all_sent_messages) == 0:
+                logger.warning(f"媒体发送部分超时，预计已发送约{total_media_estimate}个媒体项目（可能不准确）")
+            else:
+                logger.info(f"所有媒体发送完成，{success_groups}/{total_groups}组成功，共{len(all_sent_messages)}个媒体项目成功记录")
+            
+            # 返回第一条消息或任何成功发送的消息
             return first_message if first_message else (all_sent_messages[0] if all_sent_messages else None)
         except Exception as e:
             logger.error(f"发送媒体组失败: {e}")
-            return None
+            return caption_message  # 如果至少发送了caption消息，则返回它
 
 async def handle_document_publish(context, doc_list, caption=None, reply_to_message_id=None):
     """
