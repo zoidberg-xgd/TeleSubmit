@@ -47,35 +47,163 @@
   - 数据库操作事务保障
   - 异常状态自动恢复
 
+## 快速开始
+
+### 🚀 一键部署（推荐）
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/zoidberg-xgd/TeleSubmit.git
+cd TeleSubmit
+
+# 2. 给脚本添加执行权限
+chmod +x deploy.sh
+
+# 3. 运行一键部署
+./deploy.sh
+```
+
+首次运行会自动创建配置文件 `config.ini`，按提示编辑后再次运行 `./deploy.sh` 即可启动机器人。
+
 ## 安装指南
 
-1. **克隆仓库**:
-   ```bash
-   git clone https://github.com/zoidberg-xgd/TeleSubmit.git
-   cd TeleSubmit
-   ```
+### 方式一：Docker 部署（推荐）⭐
 
-2. **安装依赖**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+使用 Docker 部署是最简单快捷的方式，无需手动安装 Python 环境和依赖。
 
-3. **配置机器人**:
-   ```bash
-   # 复制示例配置文件
-   cp config.ini.example config.ini
-   
-   # 或使用环境变量配置
-   cp .env.example .env
-   
-   # 编辑配置文件，填入您的Telegram机器人令牌、频道ID和所有者ID
-   nano config.ini
-   ```
+**优势**:
+- ✅ 环境隔离，避免依赖冲突
+- ✅ 一键启动，无需手动配置 Python 环境
+- ✅ 自动重启，提高服务稳定性
+- ✅ 资源限制，防止占用过多系统资源
+- ✅ 日志管理，自动轮转日志文件
+- ✅ 数据持久化，容器重启数据不丢失
 
-4. **启动机器人**:
-   ```bash
-   python main.py
-   ```
+**系统要求**:
+- Docker >= 20.10
+- Docker Compose >= 1.29
+
+#### 方法 A：一键部署脚本（最简单）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/zoidberg-xgd/TeleSubmit.git
+cd TeleSubmit
+
+# 2. 运行部署脚本
+chmod +x deploy.sh
+./deploy.sh
+```
+
+脚本会自动：
+- ✅ 检查 Docker 环境
+- ✅ 创建配置文件（如果不存在）
+- ✅ 创建必要的目录
+- ✅ 构建 Docker 镜像
+- ✅ 启动容器
+- ✅ 检查运行状态
+
+首次运行时会提示编辑配置文件，编辑完成后再次运行 `./deploy.sh` 即可。
+
+#### 方法 B：手动 Docker Compose
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/zoidberg-xgd/TeleSubmit.git
+cd TeleSubmit
+
+# 2. 创建配置文件
+cp config.ini.example config.ini
+nano config.ini  # 编辑配置
+
+# 3. 创建必要目录
+mkdir -p data logs
+
+# 4. 启动容器
+docker-compose up -d
+
+# 5. 查看日志
+docker-compose logs -f
+```
+
+#### 方法 C：使用 Makefile 命令（最方便）
+
+```bash
+# 查看所有可用命令
+make help
+
+# 一键部署
+make deploy
+
+# 常用命令
+make up        # 启动容器
+make down      # 停止容器
+make restart   # 重启容器
+make logs      # 查看日志
+make status    # 查看状态
+make backup    # 备份数据
+make update    # 更新版本
+```
+
+#### 方法 D：使用 Docker 命令
+
+```bash
+# 1. 构建镜像
+docker build -t telesubmit .
+
+# 2. 创建目录
+mkdir -p data logs
+
+# 3. 启动容器
+docker run -d \
+  --name telesubmit-bot \
+  --restart unless-stopped \
+  -v $(pwd)/config.ini:/app/config.ini:ro \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  telesubmit
+
+# 4. 查看日志
+docker logs -f telesubmit-bot
+```
+
+### 方式二：传统部署
+
+如果您不使用 Docker，可以按照以下步骤部署：
+
+**系统要求**:
+- Python 3.7+
+- pip (Python 包管理器)
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/zoidberg-xgd/TeleSubmit.git
+cd TeleSubmit
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 创建配置文件
+cp config.ini.example config.ini
+nano config.ini  # 编辑配置
+
+# 4. 启动机器人
+python bot.py
+
+# 5. 后台运行（可选）
+# 使用 screen
+screen -S telesubmit
+python bot.py
+# 按 Ctrl+A+D 退出
+
+# 或使用 tmux
+tmux new -s telesubmit
+python bot.py
+# 按 Ctrl+B+D 退出
+
+# 或使用 nohup
+nohup python bot.py > output.log 2>&1 &
+```
 
 ## 配置说明
 
@@ -83,39 +211,47 @@
 
 ```ini
 [BOT]
-# Telegram机器人令牌
+# Telegram机器人令牌（必填）
+# 从 @BotFather 获取
 TOKEN = your_bot_token_here
 
-# 目标频道ID
+# 目标频道ID（必填）
+# 格式: @channel_username 或 -100xxxxxxxxxx
 CHANNEL_ID = @your_channel_name
 
-# 数据库文件路径
-DB_PATH = submissions.db
-
-# 会话超时时间（秒）
-TIMEOUT = 300
-
-# 最多允许的标签数量
-ALLOWED_TAGS = 30
-
-# 机器人工作模式: MEDIA, DOCUMENT, MIXED
-BOT_MODE = MIXED
-
-# 机器人所有者ID
+# 机器人所有者ID（必填）
+# 从 @userinfobot 获取您的用户ID
 OWNER_ID = your_user_id_here
 
-# 是否显示投稿人信息
+# 数据库文件路径（可选）
+DB_PATH = submissions.db
+
+# 会话超时时间（秒）（可选）
+TIMEOUT = 300
+
+# 最多允许的标签数量（可选）
+ALLOWED_TAGS = 30
+
+# 机器人工作模式（可选）
+# MEDIA: 仅媒体模式
+# DOCUMENT: 仅文档模式
+# MIXED: 混合模式（推荐）
+BOT_MODE = MIXED
+
+# 是否显示投稿人信息（可选）
 SHOW_SUBMITTER = True
 
-# 是否向所有者发送投稿通知
+# 是否向所有者发送投稿通知（可选）
 NOTIFY_OWNER = True
 ```
 
 ### 环境变量配置 (.env)
 
-也可以使用环境变量方式配置（推荐用于生产环境）:
+也可以使用环境变量方式配置（推荐用于 Docker 部署）:
 
-```
+```bash
+# 创建 .env 文件
+cat > .env << EOF
 TOKEN=your_bot_token_here
 CHANNEL_ID=@your_channel_name
 OWNER_ID=your_user_id_here
@@ -124,6 +260,16 @@ DB_PATH=submissions.db
 BOT_MODE=MIXED
 SHOW_SUBMITTER=True
 NOTIFY_OWNER=True
+EOF
+```
+
+在 `docker-compose.yml` 中使用：
+
+```yaml
+environment:
+  - BOT_TOKEN=${TOKEN}
+  - CHANNEL_ID=${CHANNEL_ID}
+  - OWNER_ID=${OWNER_ID}
 ```
 
 ## 使用方法
@@ -168,6 +314,188 @@ NOTIFY_OWNER=True
 - `/blacklist_list` - 显示当前黑名单列表
 - `/debug` - 显示系统调试信息
 
+## Docker 管理
+
+### 容器管理
+
+```bash
+# 启动容器
+docker-compose up -d
+
+# 停止容器
+docker-compose stop
+
+# 重启容器
+docker-compose restart
+
+# 删除容器
+docker-compose down
+
+# 重新构建并启动
+docker-compose up -d --build
+
+# 查看容器状态
+docker-compose ps
+
+# 进入容器 shell
+docker-compose exec telesubmit /bin/bash
+```
+
+### 日志查看
+
+```bash
+# 实时查看日志
+docker-compose logs -f
+
+# 查看最近 100 行日志
+docker-compose logs --tail=100
+
+# 查看容器内的日志文件
+docker-compose exec telesubmit tail -f /app/logs/telesubmit_$(date +%Y-%m-%d).log
+```
+
+### 资源监控
+
+```bash
+# 查看容器资源使用
+docker stats telesubmit-bot
+
+# 查看容器详细信息
+docker inspect telesubmit-bot
+```
+
+### 数据备份
+
+```bash
+# 完整备份（推荐）
+tar -czf telesubmit-backup-$(date +%Y%m%d-%H%M%S).tar.gz \
+  config.ini data/ logs/
+
+# 仅备份数据库
+cp data/submissions.db data/submissions.db.$(date +%Y%m%d-%H%M%S).bak
+
+# 使用 Makefile
+make backup
+```
+
+### 数据恢复
+
+```bash
+# 停止容器
+docker-compose down
+
+# 恢复完整备份
+tar -xzf telesubmit-backup-20241018-120000.tar.gz
+
+# 或恢复数据库
+cp data/submissions.db.20241018-120000.bak data/submissions.db
+
+# 重启容器
+docker-compose up -d
+```
+
+### 更新机器人
+
+```bash
+# 方法 1: 使用 Makefile（推荐）
+make update
+
+# 方法 2: 手动更新
+# 1. 备份数据
+tar -czf backup-before-update-$(date +%Y%m%d).tar.gz config.ini data/ logs/
+
+# 2. 停止容器
+docker-compose down
+
+# 3. 拉取最新代码
+git pull
+
+# 4. 重新构建
+docker-compose build --no-cache
+
+# 5. 启动容器
+docker-compose up -d
+
+# 6. 查看日志
+docker-compose logs -f
+```
+
+## 故障排查
+
+### 容器无法启动
+
+```bash
+# 1. 查看详细日志
+docker-compose logs
+
+# 2. 检查配置文件
+cat config.ini
+
+# 3. 检查配置文件格式
+docker-compose config
+
+# 4. 检查端口占用
+netstat -tlnp | grep <port>
+
+# 5. 检查磁盘空间
+df -h
+
+# 6. 清理 Docker 缓存
+docker system prune -a
+```
+
+### 机器人无响应
+
+```bash
+# 1. 检查容器状态
+docker-compose ps
+
+# 2. 查看实时日志
+docker-compose logs -f
+
+# 3. 检查网络连接
+docker-compose exec telesubmit ping -c 3 api.telegram.org
+
+# 4. 重启容器
+docker-compose restart
+
+# 5. 完全重新部署
+docker-compose down
+docker-compose up -d --build
+```
+
+### 权限问题
+
+```bash
+# 修复目录权限
+sudo chown -R $(id -u):$(id -g) data/ logs/
+chmod 755 data/ logs/
+
+# 检查 SELinux（如果使用）
+sestatus
+# 如果 SELinux 导致问题，可以临时禁用
+sudo setenforce 0
+```
+
+### 内存/CPU 占用过高
+
+编辑 `docker-compose.yml` 调整资源限制：
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '0.5'      # 减少 CPU 限制
+      memory: 256M     # 减少内存限制
+```
+
+然后重启容器：
+
+```bash
+docker-compose down
+docker-compose up -d
+```
+
 ## 项目结构
 
 ```
@@ -203,46 +531,93 @@ TeleSubmit/
 │   ├── helper_functions.py   # 通用辅助函数
 │   └── logging_config.py     # 日志配置
 │
+├── data/                     # 数据目录 (自动创建)
 ├── logs/                     # 日志目录 (自动创建)
+├── .dockerignore             # Docker 忽略文件
 ├── .env.example              # 环境变量示例
-├── .gitignore                # Git忽略文件
+├── .gitignore                # Git 忽略文件
+├── bot.py                    # 主程序入口
 ├── config.ini.example        # 配置文件示例
-├── main.py                   # 主程序入口
-├── README.md                 # 说明文档
-└── requirements.txt          # 依赖项清单
+├── deploy.sh                 # 一键部署脚本
+├── docker-compose.yml        # Docker Compose 配置
+├── Dockerfile                # Docker 镜像构建文件
+├── Makefile                  # Make 命令快捷方式
+├── README.md                 # 完整说明文档（本文件）
+└── requirements.txt          # Python 依赖项清单
 ```
 
-## 黑名单功能使用指南
+## 黑名单功能
 
-1. **获取用户ID**:
-   - 使用 [@userinfobot](https://t.me/userinfobot) 获取用户的数字ID
-   - 通过投稿内容尾部的"投稿人"链接查看用户资料
-   - 接收机器人发送的投稿通知（当`NOTIFY_OWNER=True`时）
+### 获取用户ID
 
-2. **管理命令**:
-   - 添加黑名单: `/blacklist_add 123456789 违规内容`
-   - 移除黑名单: `/blacklist_remove 123456789`
-   - 查看黑名单: `/blacklist_list`
+1. 使用 [@userinfobot](https://t.me/userinfobot) 获取用户的数字ID
+2. 通过投稿内容尾部的"投稿人"链接查看用户资料
+3. 接收机器人发送的投稿通知（当`NOTIFY_OWNER=True`时）
 
-### 日志与调试
+### 管理命令
 
-1. **日志文件**:
-   - 日志保存在 `logs/` 目录下
-   - 按日期分类，格式为 `telesubmit_YYYY-MM-DD.log`
-   - 包含详细的操作记录和错误信息
+```bash
+# 添加黑名单
+/blacklist_add 123456789 违规内容
 
-2. **调试命令**:
-   - 机器人所有者可发送 `/debug` 命令查看系统状态
-   - 信息包括：活跃会话数、数据库状态、内存使用等
+# 移除黑名单
+/blacklist_remove 123456789
 
-## 系统要求
+# 查看黑名单
+/blacklist_list
+```
 
-- Python 3.7+
+## 日志与调试
+
+### 日志文件
+
+- 日志保存在 `logs/` 目录下
+- 按日期分类，格式为 `telesubmit_YYYY-MM-DD.log`
+- 包含详细的操作记录和错误信息
+
+### 调试命令
+
+机器人所有者可发送 `/debug` 命令查看系统状态，包括：
+- 活跃会话数
+- 数据库状态
+- 内存使用情况
+- Python 版本信息
+
+### 查看日志
+
+```bash
+# Docker 部署
+docker-compose logs -f
+
+# 传统部署
+tail -f logs/telesubmit_$(date +%Y-%m-%d).log
+```
+
+## 依赖项
+
 - python-telegram-bot >= 21.0
 - aiosqlite >= 0.17.0
 - configparser >= 6.0.0
 - python-dotenv >= 1.0.0
+- psutil >= 5.9.0
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ## 许可证
 
 MIT 许可证 - 详见 LICENSE 文件
+
+## 支持
+
+如遇问题：
+1. 查看本文档的故障排查部分
+2. 查看 [GitHub Issues](https://github.com/zoidberg-xgd/TeleSubmit/issues)
+3. 提交新的 Issue
+
+---
+
+**开发者**: [@zoidberg-xgd](https://github.com/zoidberg-xgd)
+
+**项目地址**: https://github.com/zoidberg-xgd/TeleSubmit

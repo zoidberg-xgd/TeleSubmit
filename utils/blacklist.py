@@ -173,7 +173,7 @@ def is_owner(user_id: int) -> bool:
         result = user_id_int == owner_id_int
         
         # 记录详细的日志
-        logger.warning(f"所有者检查 - 用户ID: {user_id_int}, OWNER_ID: {owner_id_int}, 结果: {result}")
+        logger.info(f"所有者检查 - 用户ID: {user_id_int}, OWNER_ID: {owner_id_int}, 结果: {result}")
         
         return result
             

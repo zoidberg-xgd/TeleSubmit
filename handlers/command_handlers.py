@@ -53,7 +53,7 @@ async def debug(update: Update, context: CallbackContext):
         update: Telegram 更新对象
         context: 回调上下文
     """
-    logger.error(f"调试命令被调用: 用户ID={update.effective_user.id}")
+    logger.info(f"调试命令被调用: 用户ID={update.effective_user.id}")
     
     # 获取用户ID
     user_id = update.effective_user.id
@@ -119,12 +119,6 @@ async def debug(update: Update, context: CallbackContext):
             await update.message.reply_text(f"❌ 生成调试信息时发生错误: {str(e)[:100]}")
         except Exception as e2:
             logger.error(f"发送错误消息失败: {e2}")
-    
-    # 返回调试结果
-    try:
-        await update.message.reply_text("🔍 调试命令执行完毕")
-    except Exception as e:
-        logger.error(f"发送完成消息失败: {e}")
 
 async def catch_all(update: Update, context: CallbackContext):
     """
@@ -146,7 +140,7 @@ async def blacklist_add(update: Update, context: CallbackContext):
         update: Telegram 更新对象
         context: 回调上下文
     """
-    logger.error(f"黑名单添加命令被调用: 用户ID={update.effective_user.id}")
+    logger.info(f"黑名单添加命令被调用: 用户ID={update.effective_user.id}")
     
     user_id = update.effective_user.id
     
@@ -216,7 +210,7 @@ async def blacklist_remove(update: Update, context: CallbackContext):
         update: Telegram 更新对象
         context: 回调上下文
     """
-    logger.error(f"黑名单移除命令被调用: 用户ID={update.effective_user.id}")
+    logger.info(f"黑名单移除命令被调用: 用户ID={update.effective_user.id}")
     
     user_id = update.effective_user.id
     
@@ -285,7 +279,7 @@ async def blacklist_list(update: Update, context: CallbackContext):
         update: Telegram 更新对象
         context: 回调上下文
     """
-    logger.error(f"黑名单列表命令被调用: 用户ID={update.effective_user.id}")
+    logger.info(f"黑名单列表命令被调用: 用户ID={update.effective_user.id}")
     
     user_id = update.effective_user.id
     

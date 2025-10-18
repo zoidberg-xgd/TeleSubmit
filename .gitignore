@@ -59,6 +59,11 @@ yarn-error.log*
 temp/
 tmp/
 
+# Docker 相关数据目录
+data/
+backups/
+*.tar.gz
+
 # 其他
 .coverage
 htmlcov/

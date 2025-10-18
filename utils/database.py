@@ -293,6 +293,15 @@ def get_all_user_states() -> Dict[int, Dict[str, Any]]:
     Returns:
         Dict[int, Dict[str, Any]]: 用户ID到会话状态的映射
     """
-    global _user_states
-    with _state_lock:
-        return _user_states.copy() 
+    try:
+        sessions = get_all_active_sessions()
+        # 将列表转换为字典格式
+        result = {}
+        for session in sessions:
+            user_id = session.get('user_id')
+            if user_id:
+                result[user_id] = session
+        return result
+    except Exception as e:
+        logger.error(f"获取所有用户状态失败: {e}")
+        return {} 
